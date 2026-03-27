@@ -8,8 +8,6 @@
 #include <string.h>
 #include <time.h>
 
-const int NUM_ROUNDS = 136;
-
 static int totalCrypto = 0;
 static int totalRandom = 0;
 static int totalSha = 0;
@@ -27,6 +25,8 @@ void init() {
   srand((unsigned)time(NULL));
   init_EVP();
   openmp_thread_setup();
+
+  test_randomness();
 }
 
 void cleanup() {
@@ -82,14 +82,14 @@ inline void RAND_bytes_no_fail(unsigned char *buf, int num) {
 
 void generate_keys_and_rs(unsigned char keys[NUM_ROUNDS][3][16],
                           unsigned char rs[NUM_ROUNDS][3][4]) {
-  RAND_bytes_no_fail((unsigned char*) keys, NUM_ROUNDS * 3 * 16);
-  RAND_bytes_no_fail((unsigned char*) rs, NUM_ROUNDS * 3 * 4);
+  RAND_bytes_no_fail((unsigned char *)keys, NUM_ROUNDS * 3 * 16);
+  RAND_bytes_no_fail((unsigned char *)rs, NUM_ROUNDS * 3 * 4);
 }
 
 void share_secret(int userInputLen,
                   unsigned char shares[NUM_ROUNDS][3][userInputLen],
                   const unsigned char input[userInputLen]) {
-  if (RAND_bytes((unsigned char*) shares, NUM_ROUNDS * 3 * userInputLen) != 1) {
+  if (RAND_bytes((unsigned char *)shares, NUM_ROUNDS * 3 * userInputLen) != 1) {
     printf("RAND_bytes failed crypto, aborting\n");
     exit(1);
   }
@@ -106,10 +106,10 @@ void share_secret(int userInputLen,
 }
 
 void mpc_sha256_prover(int userInputLen,
-                unsigned char shares[NUM_ROUNDS][3][userInputLen],
-                unsigned char *randomness[NUM_ROUNDS][3],
-                unsigned char rs[NUM_ROUNDS][3][4],
-                View localViews[NUM_ROUNDS][3], a as[NUM_ROUNDS]) {
+                       unsigned char shares[NUM_ROUNDS][3][userInputLen],
+                       unsigned char *randomness[NUM_ROUNDS][3],
+                       unsigned char rs[NUM_ROUNDS][3][4],
+                       View localViews[NUM_ROUNDS][3], a as[NUM_ROUNDS]) {
 #pragma omp parallel for
   for (int k = 0; k < NUM_ROUNDS; k++) {
     as[k] =
@@ -164,25 +164,14 @@ void write_to_file(a as[NUM_ROUNDS], z *zs,
 int main(void) {
   init();
 
-  test_randomness();
+  int userInputLen = 1;
+  unsigned char input[userInputLen];
 
-  printf("Enter the string to be hashed (Max 55 characters): ");
-  char userInput[55]; // 55 is max length as we only support 447 bits = 55.875
-                      // bytes
-  fgets(userInput, sizeof(userInput), stdin);
-
-  int userInputLen = strlen(userInput) - 1;
-  printf("String length: %d\n", userInputLen);
-
+  printf("Committing to byte: %02x\n", input[0]);
   printf("Iterations of SHA: %d\n", NUM_ROUNDS);
 
-  unsigned char input[userInputLen];
-  for (int j = 0; j < userInputLen; j++) {
-    input[j] = userInput[j];
-  }
-
   clock_t begin = clock();
-  // randomness for commitments to views: Com(x,r) = SHA-256(x,r)
+  // randomness for commitments to secret input: Com(x,r) = SHA-256(x,r)
   unsigned char rs[NUM_ROUNDS][3][4]; // NUM_ROUNDS rounds * 3 parties * 32bits
   unsigned char keys[NUM_ROUNDS][3]
                     [16]; // NUM_ROUNDS rounds * 3 parties * 128bits

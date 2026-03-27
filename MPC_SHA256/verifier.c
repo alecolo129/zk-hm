@@ -15,8 +15,6 @@
 #include <time.h>
 #include "shared.h"
 
-int NUM_ROUNDS = 136;
-
 void printbits(uint32_t n) {
 	if (n) {
 		printbits(n >> 1);
