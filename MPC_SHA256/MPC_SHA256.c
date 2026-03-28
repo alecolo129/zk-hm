@@ -488,24 +488,23 @@ a commit(int numBytes, unsigned char shares[3][numBytes],
   hashes[1] = malloc(32);
   hashes[2] = malloc(32);
 
-  int *countY = calloc(1, sizeof(int));
-  mpc_sha256(hashes, inputs, numBytes * 8, randomness, views, countY);
+  int countY = 0;
+  mpc_sha256(hashes, inputs, numBytes * 8, randomness, views, &countY);
 
   // Explicitly add y to view
   for (int i = 0; i < 8; i++) {
-    views[0].y[*countY] = (hashes[0][i * 4] << 24) |
+    views[0].y[countY] = (hashes[0][i * 4] << 24) |
                           (hashes[0][i * 4 + 1] << 16) |
                           (hashes[0][i * 4 + 2] << 8) | hashes[0][i * 4 + 3];
 
-    views[1].y[*countY] = (hashes[1][i * 4] << 24) |
+    views[1].y[countY] = (hashes[1][i * 4] << 24) |
                           (hashes[1][i * 4 + 1] << 16) |
                           (hashes[1][i * 4 + 2] << 8) | hashes[1][i * 4 + 3];
-    views[2].y[*countY] = (hashes[2][i * 4] << 24) |
+    views[2].y[countY] = (hashes[2][i * 4] << 24) |
                           (hashes[2][i * 4 + 1] << 16) |
                           (hashes[2][i * 4 + 2] << 8) | hashes[2][i * 4 + 3];
-    *countY += 1;
+    countY += 1;
   }
-  free(countY);
   free(hashes[0]);
   free(hashes[1]);
   free(hashes[2]);
@@ -517,6 +516,7 @@ a commit(int numBytes, unsigned char shares[3][numBytes],
   uint32_t *result3 = malloc(32);
   output(views[2], result3);
 
+  // copy last part of the view.y (i.e., SHA256 output) into a.yp
   a a;
   memcpy(a.yp[0], result1, 32);
   memcpy(a.yp[1], result2, 32);
