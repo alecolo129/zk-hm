@@ -17,6 +17,18 @@
 #include <string.h>
 #include <time.h>
 
+void mpc_AND_impl(uint32_t x[3], uint32_t y[3], uint32_t z[3],
+             unsigned char *randomness[3], int *randCount, uint32_t *y_views[3],
+             int *countY);
+
+void mpc_ADD_impl(uint32_t x[3], uint32_t y[3], uint32_t z[3],
+             unsigned char *randomness[3], int *randCount, uint32_t *y_views[3],
+             int *countY);
+
+void mpc_ADDK_impl(uint32_t x[3], uint32_t y, uint32_t z[3],
+              unsigned char *randomness[3], int *randCount, uint32_t *y_views[3],
+              int *countY);
+
 uint32_t rand32() {
   uint32_t x;
   x = rand() & 0xff;
@@ -43,6 +55,13 @@ void mpc_XOR(uint32_t x[3], uint32_t y[3], uint32_t z[3]) {
 void mpc_AND(uint32_t x[3], uint32_t y[3], uint32_t z[3],
              unsigned char *randomness[3], int *randCount, View views[3],
              int *countY) {
+  uint32_t * y_views[3] = {views[0].y, views[1].y, views[2].y};
+  mpc_AND_impl(x, y, z, randomness, randCount, y_views, countY);
+}
+
+void mpc_AND_impl(uint32_t x[3], uint32_t y[3], uint32_t z[3],
+             unsigned char *randomness[3], int *randCount, uint32_t *y_views[3],
+             int *countY) {
   uint32_t r[3] = {getRandom32(randomness[0], *randCount),
                    getRandom32(randomness[1], *randCount),
                    getRandom32(randomness[2], *randCount)};
@@ -55,9 +74,9 @@ void mpc_AND(uint32_t x[3], uint32_t y[3], uint32_t z[3],
   z[0] = t[0];
   z[1] = t[1];
   z[2] = t[2];
-  views[0].y[*countY] = z[0];
-  views[1].y[*countY] = z[1];
-  views[2].y[*countY] = z[2];
+  y_views[0][*countY] = z[0];
+  y_views[1][*countY] = z[1];
+  y_views[2][*countY] = z[2];
   (*countY)++;
 }
 
@@ -69,6 +88,21 @@ void mpc_NEGATE(uint32_t x[3], uint32_t z[3]) {
 
 void mpc_ADD(uint32_t x[3], uint32_t y[3], uint32_t z[3],
              unsigned char *randomness[3], int *randCount, View views[3],
+             int *countY) {
+  uint32_t * y_views[3] = {views[0].y, views[1].y, views[2].y}; 
+  mpc_ADD_impl(x, y, z, randomness, randCount, y_views, countY);
+}
+
+void mpc_ADDK(uint32_t x[3], uint32_t y, uint32_t z[3],
+              unsigned char *randomness[3], int *randCount, View views[3],
+              int *countY) {
+  uint32_t * y_views[3] = {views[0].y, views[1].y, views[2].y};
+  uint32_t ys[3] = {y, y, y};
+  mpc_ADD_impl(x, ys, z, randomness, randCount, y_views, countY);
+}
+
+void mpc_ADD_impl(uint32_t x[3], uint32_t y[3], uint32_t z[3],
+             unsigned char *randomness[3], int *randCount, uint32_t *y_views[3],
              int *countY) {
   uint32_t c[3] = {0};
   uint32_t r[3] = {getRandom32(randomness[0], *randCount),
@@ -103,51 +137,9 @@ void mpc_ADD(uint32_t x[3], uint32_t y[3], uint32_t z[3],
   z[1] = x[1] ^ y[1] ^ c[1];
   z[2] = x[2] ^ y[2] ^ c[2];
 
-  views[0].y[*countY] = c[0];
-  views[1].y[*countY] = c[1];
-  views[2].y[*countY] = c[2];
-  *countY += 1;
-}
-
-void mpc_ADDK(uint32_t x[3], uint32_t y, uint32_t z[3],
-              unsigned char *randomness[3], int *randCount, View views[3],
-              int *countY) {
-  uint32_t c[3] = {0};
-  uint32_t r[3] = {getRandom32(randomness[0], *randCount),
-                   getRandom32(randomness[1], *randCount),
-                   getRandom32(randomness[2], *randCount)};
-  *randCount += 4;
-
-  uint8_t a[3], b[3];
-
-  uint8_t t;
-
-  for (int i = 0; i < 31; i++) {
-    a[0] = GETBIT(x[0] ^ c[0], i);
-    a[1] = GETBIT(x[1] ^ c[1], i);
-    a[2] = GETBIT(x[2] ^ c[2], i);
-
-    b[0] = GETBIT(y ^ c[0], i);
-    b[1] = GETBIT(y ^ c[1], i);
-    b[2] = GETBIT(y ^ c[2], i);
-
-    t = (a[0] & b[1]) ^ (a[1] & b[0]) ^ GETBIT(r[1], i);
-    SETBIT(c[0], i + 1, t ^ (a[0] & b[0]) ^ GETBIT(c[0], i) ^ GETBIT(r[0], i));
-
-    t = (a[1] & b[2]) ^ (a[2] & b[1]) ^ GETBIT(r[2], i);
-    SETBIT(c[1], i + 1, t ^ (a[1] & b[1]) ^ GETBIT(c[1], i) ^ GETBIT(r[1], i));
-
-    t = (a[2] & b[0]) ^ (a[0] & b[2]) ^ GETBIT(r[0], i);
-    SETBIT(c[2], i + 1, t ^ (a[2] & b[2]) ^ GETBIT(c[2], i) ^ GETBIT(r[2], i));
-  }
-
-  z[0] = x[0] ^ y ^ c[0];
-  z[1] = x[1] ^ y ^ c[1];
-  z[2] = x[2] ^ y ^ c[2];
-
-  views[0].y[*countY] = c[0];
-  views[1].y[*countY] = c[1];
-  views[2].y[*countY] = c[2];
+  y_views[0][*countY] = c[0];
+  y_views[1][*countY] = c[1];
+  y_views[2][*countY] = c[2];
   *countY += 1;
 }
 
