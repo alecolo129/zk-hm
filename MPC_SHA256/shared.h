@@ -25,7 +25,6 @@
 
 static const int NUM_ROUNDS = 136;
 
-
 static const uint32_t hA[8] = { 0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
 		0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19 };
 
@@ -45,16 +44,19 @@ static const uint32_t k[64] = { 0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
 
 #define ySize 736
 
+// views
 typedef struct {
-	unsigned char x[64];
-	uint32_t y[ySize];
+	unsigned char x[64]; // secret input share = SHA256 input chunk (padded and pre-processed)
+	uint32_t y[ySize]; // output share (i.e., all the ADD/AND commits + the SHA256 output)
 } View;
 
+// commitment
 typedef struct {
-	uint32_t yp[3][8];
-	unsigned char h[3][32];
+	uint32_t yp[3][8]; // SHA256 output of each party 
+	unsigned char h[3][32]; //SHA256 of each party's key and view with commitment randomnes k 
 } a;
 
+// open
 typedef struct {
 	// keys can be used by verifier to obtain random tapes 
 	unsigned char ke[16]; // key party i
@@ -65,6 +67,33 @@ typedef struct {
 	unsigned char re[4];
 	unsigned char re1[4];
 } z;
+
+// ---- pre-image equality => prove m : c1 = SHA256(m,r) & c2 = SHA256(m, r') for some randomness r,r'
+
+// views
+typedef struct {
+	unsigned char x[64]; // secret input share = SHA256 input chunk (padded and pre-processed)
+	uint32_t y[2][ySize]; // output share (i.e., all the ADD/AND commits + the SHA256 output)
+} View2;
+
+
+// commitment
+typedef struct {
+	uint32_t yp[2][3][8]; // SHA256 output of each party 
+	unsigned char h[3][32]; //SHA256 of each party's key and view with commitment randomnes k 
+} a2;
+
+// open
+typedef struct {
+	// keys can be used by verifier to obtain random tapes 
+	unsigned char ke[16]; // key party i
+	unsigned char ke1[16]; // key party i+1
+	View2 ve; // view party i
+	View2 ve1; // view party i+1
+	// randomness used in commitments 
+	unsigned char re[2][4];
+	unsigned char re1[2][4];
+} z2;
 
 #define RIGHTROTATE(x,n) (((x) >> (n)) | ((x) << (32-(n))))
 #define GETBIT(x, i) (((x) >> (i)) & 0x01)
