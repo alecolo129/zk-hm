@@ -340,6 +340,15 @@ int verify(a a, int e, z z) {
 		return 1;
 	}
 
+	for (int i = 0; i < 8; i++) {
+		if ((hHa[i][0] != a.yp[e][i]) || (hHa[i][1] != a.yp[(e + 1) % 3][i])) {
+#if VERBOSE
+			printf("Failing at %d", __LINE__);
+#endif
+			return 1;
+		}
+	}
+
 	free(randCount);
 	free(countY);
 
