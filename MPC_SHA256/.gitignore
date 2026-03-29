@@ -1,3 +1,2 @@
-*_prover
-*_verifier
+build/*
 *.bin
