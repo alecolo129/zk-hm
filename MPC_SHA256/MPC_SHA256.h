@@ -20,10 +20,20 @@ int secretShare(unsigned char *input, int numBytes,
 int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3], int numBits,
                unsigned char *randomness[3], View views[3], int *countY);
 
+int mpc_sha256_2(unsigned char *results[3], unsigned char *inputs[3],
+                 int numBits, unsigned char *randomness[3], ViewsPtr views,
+                 int *countY);
+
 a commit(int numBytes, unsigned char shares[3][numBytes],
          unsigned char *randomness[3], unsigned char rs[3][4], View views[3]);
+
+void commit2(int numBytes, unsigned char shares[3][numBytes],
+              unsigned char *randomness[3], unsigned char rs[3][4],
+              View2 views[3]);
 
 z prove(int e, unsigned char keys[3][16], unsigned char rs[3][4],
         View views[3]);
 
+z2 prove2(int e, unsigned char keys[3][16], unsigned char rs[3][4],
+          View2 views[3]);
 #endif
