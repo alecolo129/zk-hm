@@ -17,14 +17,7 @@ void generate_randomness(unsigned int numRounds,
 int secretShare(unsigned char *input, int numBytes,
                 unsigned char output[3][numBytes]);
 
-int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3], int numBits,
-               unsigned char *randomness[3], View views[3], int *countY);
-
-int mpc_sha256_2(unsigned char *results[3], unsigned char *inputs[3],
-                 int numBits, unsigned char *randomness[3], ViewsPtr views,
-                 int *countY);
-
-a commit(int numBytes, unsigned char shares[3][numBytes],
+void commit(int numBytes, unsigned char shares[3][numBytes],
          unsigned char *randomness[3], unsigned char rs[3][4], View views[3]);
 
 void commit2(int numBytes, unsigned char shares[3][numBytes],

@@ -20,6 +20,14 @@ static int inMilliZ = 0;
 static int inMilliWrite = 0;
 static int inMilli = 0;
 
+void test_randomness() {
+  unsigned char garbage[4];
+  if (RAND_bytes(garbage, 4) != 1) {
+    printf("RAND_bytes failed crypto, aborting\n");
+    exit(1);
+  }
+}
+
 void init() {
   setbuf(stdout, NULL);
   srand((unsigned)time(NULL));
@@ -32,14 +40,6 @@ void init() {
 void cleanup() {
   openmp_thread_cleanup();
   cleanup_EVP();
-}
-
-void test_randomness() {
-  unsigned char garbage[4];
-  if (RAND_bytes(garbage, 4) != 1) {
-    printf("RAND_bytes failed crypto, aborting\n");
-    exit(1);
-  }
 }
 
 inline void update_clock(clock_t beginClock, int *clockToUpdate) {
@@ -112,8 +112,12 @@ void mpc_sha256_prover(int userInputLen,
                        View localViews[NUM_ROUNDS][3], a as[NUM_ROUNDS]) {
 #pragma omp parallel for
   for (int k = 0; k < NUM_ROUNDS; k++) {
-    as[k] =
-        commit(userInputLen, shares[k], randomness[k], rs[k], localViews[k]);
+    commit(userInputLen, shares[k], randomness[k], rs[k], localViews[k]);
+
+    // copy last part of the view.y (i.e., SHA256 output) into a.yp
+    output(localViews[k][0], as[k].yp[0]);
+    output(localViews[k][1], as[k].yp[1]);
+    output(localViews[k][2], as[k].yp[2]);
 
     // TODO: free and allocate once
     for (int j = 0; j < 3; j++) {
@@ -164,13 +168,14 @@ void write_to_file(a as[NUM_ROUNDS], z *zs,
 int main(void) {
   init();
 
-  int userInputLen = 1;
+  int userInputLen = 32;
   unsigned char input[userInputLen];
+  RAND_bytes(input, 32);
 
-  printf("Committing to byte: %02x\n", input[0]);
   printf("Iterations of SHA: %d\n", NUM_ROUNDS);
 
   clock_t begin = clock();
+  // TODO: rs should have additional dimension
   // randomness for commitments to secret input: Com(x,r) = SHA-256(x,r)
   unsigned char rs[NUM_ROUNDS][3][4]; // NUM_ROUNDS rounds * 3 parties * 32bits
   unsigned char keys[NUM_ROUNDS][3]
@@ -191,7 +196,8 @@ int main(void) {
   share_secret(userInputLen, shares, input);
   update_clock(beginSS, &totalSS);
 
-  unsigned char *randomness[NUM_ROUNDS][3];
+  unsigned char
+      *randomness[NUM_ROUNDS][3]; // Randomness should have additional dimension
 
   // Generating randomness i.e., random tapes
   clock_t beginRandom = clock();

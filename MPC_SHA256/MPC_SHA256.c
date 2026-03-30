@@ -37,6 +37,10 @@ void mpc_CH_impl(uint32_t e[], uint32_t f[3], uint32_t g[3], uint32_t z[3],
                  unsigned char *randomness[3], int *randCount,
                  uint32_t *y_views[3], int *countY);
 
+int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3],
+                 int numBits, unsigned char *randomness[3], ViewsPtr views,
+                 int *countY);
+
 uint32_t rand32() {
   uint32_t x;
   x = rand() & 0xff;
@@ -206,7 +210,7 @@ void mpc_CH_impl(uint32_t e[], uint32_t f[3], uint32_t g[3], uint32_t z[3],
   mpc_XOR(t0, g, z);
 }
 
-int mpc_sha256_2(unsigned char *results[3], unsigned char *inputs[3],
+int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3],
                  int numBits, unsigned char *randomness[3], ViewsPtr views,
                  int *countY) {
   // N:B: would need to have more than one chunk
@@ -370,18 +374,6 @@ int mpc_sha256_2(unsigned char *results[3], unsigned char *inputs[3],
   return 0;
 }
 
-int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3], int numBits,
-               unsigned char *randomness[3], View views[3], int *countY) {
-
-  ViewsPtr views_ptr;
-  for (int i = 0; i < 3; i++) {
-    views_ptr.x[i] = views[i].x;
-    views_ptr.y[i] = views[i].y;
-  }
-
-  return mpc_sha256_2(results, inputs, numBits, randomness, views_ptr, countY);
-}
-
 int writeToFile(char filename[], void *data, int size, int numItems) {
   FILE *file;
 
@@ -424,8 +416,9 @@ void generate_randomness(unsigned int numRounds,
   }
 }
 
-a commit(int numBytes, unsigned char shares[3][numBytes],
-         unsigned char *randomness[3], unsigned char rs[3][4], View views[3]) {
+void commit_impl(int numBytes, unsigned char shares[3][numBytes],
+                 unsigned char *randomness[3], unsigned char rs[3][4],
+                 ViewsPtr views) {
 
   unsigned char *inputs[3];
   inputs[0] = shares[0];
@@ -441,14 +434,14 @@ a commit(int numBytes, unsigned char shares[3][numBytes],
 
   // Explicitly add y to view
   for (int i = 0; i < 8; i++) {
-    views[0].y[countY] = (hashes[0][i * 4] << 24) |
+    views.y[0][countY] = (hashes[0][i * 4] << 24) |
                          (hashes[0][i * 4 + 1] << 16) |
                          (hashes[0][i * 4 + 2] << 8) | hashes[0][i * 4 + 3];
 
-    views[1].y[countY] = (hashes[1][i * 4] << 24) |
+    views.y[1][countY] = (hashes[1][i * 4] << 24) |
                          (hashes[1][i * 4 + 1] << 16) |
                          (hashes[1][i * 4 + 2] << 8) | hashes[1][i * 4 + 3];
-    views[2].y[countY] = (hashes[2][i * 4] << 24) |
+    views.y[2][countY] = (hashes[2][i * 4] << 24) |
                          (hashes[2][i * 4 + 1] << 16) |
                          (hashes[2][i * 4 + 2] << 8) | hashes[2][i * 4 + 3];
     countY += 1;
@@ -456,66 +449,36 @@ a commit(int numBytes, unsigned char shares[3][numBytes],
   free(hashes[0]);
   free(hashes[1]);
   free(hashes[2]);
+}
 
-  uint32_t *result1 = malloc(32);
-  output(views[0], result1);
-  uint32_t *result2 = malloc(32);
-  output(views[1], result2);
-  uint32_t *result3 = malloc(32);
-  output(views[2], result3);
+void commit(int numBytes, unsigned char shares[3][numBytes],
+            unsigned char *randomness[3], unsigned char rs[3][4],
+            View views[3]) {
 
-  // copy last part of the view.y (i.e., SHA256 output) into a.yp
-  a a;
-  memcpy(a.yp[0], result1, 32);
-  memcpy(a.yp[1], result2, 32);
-  memcpy(a.yp[2], result3, 32);
+  ViewsPtr views_ptr;
+  for (int j = 0; j < 3; j++) {
+    views_ptr.x[j] = views[j].x;
+    views_ptr.y[j] = views[j].y;
+  }
 
-  free(result1);
-  free(result2);
-  free(result3);
-
-  return a;
+  commit_impl(numBytes, shares, randomness, rs, views_ptr);
 }
 
 void commit2(int numBytes, unsigned char shares[3][numBytes],
-              unsigned char *randomness[3], unsigned char rs[3][4],
-              View2 views[3]) {
+             unsigned char *randomness[3], unsigned char rs[3][4],
+             View2 views[3]) {
 
-  unsigned char *inputs[3];
-  inputs[0] = shares[0];
-  inputs[1] = shares[1];
-  inputs[2] = shares[2];
-  unsigned char *hashes[3];
-  hashes[0] = malloc(32);
-  hashes[1] = malloc(32);
-  hashes[2] = malloc(32);
-
-  ViewsPtr view_ptrs;
+  ViewsPtr views_ptr;
   for (int j = 0; j < 3; j++) {
-    view_ptrs.x[j] = views[j].x;
+    views_ptr.x[j] = views[j].x;
+    views_ptr.y[j] = views[j].y[0];
   }
 
-  for (int c = 0; c < 2; c++) {
-    for (int j = 0; j < 3; j++) {
-      view_ptrs.y[j] = views[j].y[c];
-    }
-    int countY = 0;
-    mpc_sha256_2(hashes, inputs, numBytes * 8, randomness, view_ptrs, &countY);
-
-    // Explicitly add y to view
-    for (int i = 0; i < 8; i++) {
-      for (int j = 0; j < 3; j++) {
-        view_ptrs.y[j][countY] = (hashes[j][i * 4] << 24) |
-                             (hashes[j][i * 4 + 1] << 16) |
-                             (hashes[j][i * 4 + 2] << 8) | hashes[j][i * 4 + 3];
-      }
-      countY += 1;
-    }
+  commit_impl(numBytes, shares, randomness, rs, views_ptr);
+  for (int j = 0; j < 3; j++) {
+    views_ptr.y[j] = views[j].y[1];
   }
-
-  free(hashes[0]);
-  free(hashes[1]);
-  free(hashes[2]);
+  commit_impl(numBytes, shares, randomness, rs, views_ptr);
 }
 
 z prove(int e, unsigned char keys[3][16], unsigned char rs[3][4],

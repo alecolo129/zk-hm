@@ -111,10 +111,6 @@ void mpc_sha256_prover(int userInputLen,
     }
   }
 
-  /*
-// copy last part of the view.y (i.e., SHA256 output) into a.yp
-a a;
-*/
 }
 
 void hash_views(unsigned char keys[NUM_ROUNDS][3][16],
@@ -194,13 +190,11 @@ int main(void) {
   generate_randomness(NUM_ROUNDS, keys, randomness);
   update_clock(beginRandom, &totalRandom);
 
-printf("before commit\n");
   // Running MPC-SHA2
   a2 as[NUM_ROUNDS];
   clock_t beginSha = clock();
   mpc_sha256_prover(userInputLen, shares, randomness, rs, localViews, as);
   update_clock(beginSha, &totalSha);
-printf("after commit\n");
 
 
   // Committing
@@ -220,7 +214,6 @@ printf("after commit\n");
   // Packing Z
   clock_t beginZ;
   z2 *zs = malloc(sizeof(z2) * NUM_ROUNDS);
-printf("before prove\n");
 // Generate proof
 #pragma omp parallel for
   for (int i = 0; i < NUM_ROUNDS; i++) {
@@ -229,7 +222,6 @@ printf("before prove\n");
     zs[i] = prove2(es[i], keys[i], rs[i], localViews[i]);
   }
   update_clock(beginZ, &inMilliZ);
-printf("after prove\n");
 
   // Writing to file
   clock_t beginWrite = clock();
