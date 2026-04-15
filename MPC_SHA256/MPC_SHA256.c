@@ -8,14 +8,12 @@
  */
 
 #include "MPC_SHA256.h"
-#include "omp.h"
 #include "shared.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 void mpc_AND_impl(uint32_t x[3], uint32_t y[3], uint32_t z[3],
                   unsigned char *randomness[3], int *randCount,
@@ -37,9 +35,8 @@ void mpc_CH_impl(uint32_t e[], uint32_t f[3], uint32_t g[3], uint32_t z[3],
                  unsigned char *randomness[3], int *randCount,
                  uint32_t *y_views[3], int *countY);
 
-int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3],
-                 int numBits, unsigned char *randomness[3], ViewsPtr views,
-                 int *countY);
+int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3], int numBits,
+               unsigned char *randomness[3], ViewsPtr views, int *countY);
 
 uint32_t rand32() {
   uint32_t x;
@@ -210,9 +207,8 @@ void mpc_CH_impl(uint32_t e[], uint32_t f[3], uint32_t g[3], uint32_t z[3],
   mpc_XOR(t0, g, z);
 }
 
-int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3],
-                 int numBits, unsigned char *randomness[3], ViewsPtr views,
-                 int *countY) {
+int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3], int numBits,
+               unsigned char *randomness[3], ViewsPtr views, int *countY) {
   // N:B: would need to have more than one chunk
   if (numBits > 447) {
     printf("Input too long, aborting!");
@@ -417,8 +413,7 @@ void generate_randomness(unsigned int numRounds,
 }
 
 void commit_impl(int numBytes, unsigned char shares[3][numBytes],
-                 unsigned char *randomness[3], unsigned char rs[3][4],
-                 ViewsPtr views) {
+                 unsigned char *randomness[3], ViewsPtr views) {
 
   unsigned char *inputs[3];
   inputs[0] = shares[0];
@@ -461,12 +456,11 @@ void commit(int numBytes, unsigned char shares[3][numBytes],
     views_ptr.y[j] = views[j].y;
   }
 
-  commit_impl(numBytes, shares, randomness, rs, views_ptr);
+  commit_impl(numBytes, shares, randomness, views_ptr);
 }
 
 void commit2(int numBytes, unsigned char shares[3][numBytes],
-             unsigned char *randomness[3], unsigned char rs[3][4],
-             View2 views[3]) {
+             unsigned char *randomness[3], View2 views[3]) {
 
   ViewsPtr views_ptr;
   for (int j = 0; j < 3; j++) {
@@ -474,11 +468,11 @@ void commit2(int numBytes, unsigned char shares[3][numBytes],
     views_ptr.y[j] = views[j].y[0];
   }
 
-  commit_impl(numBytes, shares, randomness, rs, views_ptr);
+  commit_impl(numBytes, shares, randomness, views_ptr);
   for (int j = 0; j < 3; j++) {
     views_ptr.y[j] = views[j].y[1];
   }
-  commit_impl(numBytes, shares, randomness, rs, views_ptr);
+  commit_impl(numBytes, shares, randomness, views_ptr);
 }
 
 z prove(int e, unsigned char keys[3][16], unsigned char rs[3][4],

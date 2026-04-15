@@ -1,5 +1,5 @@
 #include "shared.h"
-
+#include "omp.h"
 omp_lock_t *locks;
 
 

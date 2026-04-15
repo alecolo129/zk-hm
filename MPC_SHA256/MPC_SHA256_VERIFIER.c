@@ -1,4 +1,5 @@
 #include "MPC_SHA256_VERIFIER.h"
+#define VERBOSE true
 
 
 inline int mpc_AND_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View ve, View ve1, unsigned char randomness[2][2912], int* randCount, int* countY) {
@@ -72,24 +73,54 @@ inline int mpc_CH_verify(uint32_t e[2], uint32_t f[2], uint32_t g[2], uint32_t z
 	return 0;
 }
 
-int verify(a a, int e, z z) {
-	unsigned char* hash = malloc(SHA256_DIGEST_LENGTH);
-	H(z.ke, z.ve, z.re, hash);
+int verify_hash(a a, int e, z z) {
 
-	if (memcmp(a.h[e], hash, 32) != 0) {
+  unsigned char *hash = malloc(SHA256_DIGEST_LENGTH);
+  
+  H(z.ke, z.ve, z.re, hash);
+  if (memcmp(a.h[e], hash, 32) != 0) {
 #if VERBOSE
-		printf("Failing at %d", __LINE__);
+    printf("Failing at %d", __LINE__);
 #endif
-		return 1;
-	}
-	H(z.ke1, z.ve1, z.re1, hash);
-	if (memcmp(a.h[(e + 1) % 3], hash, 32) != 0) {
+    return 1;
+  }
+ 
+  H(z.ke1, z.ve1, z.re1, hash);
+  if (memcmp(a.h[(e + 1) % 3], hash, 32) != 0) {
 #if VERBOSE
-		printf("Failing at %d", __LINE__);
+    printf("Failing at %d", __LINE__);
 #endif
-		return 1;
-	}
-	free(hash);
+    return 1;
+  }
+
+  free(hash);
+}
+
+int verify_hash2(a2 a, int e, z2 z) {
+
+  unsigned char *hash = malloc(SHA256_DIGEST_LENGTH);
+  
+  H2(z.ke, z.ve, z.re, hash);
+  if (memcmp(a.h[e], hash, 32) != 0) {
+#if VERBOSE
+    printf("Failing at %d", __LINE__);
+#endif
+    return 1;
+  }
+ 
+  H2(z.ke1, z.ve1, z.re1, hash);
+  if (memcmp(a.h[(e + 1) % 3], hash, 32) != 0) {
+#if VERBOSE
+    printf("Failing at %d", __LINE__);
+#endif
+    return 1;
+  }
+  
+  free(hash);
+  return 0;
+}
+
+int verify(a a, int e, z z) {
 
 	uint32_t* result = malloc(32);
 	output(z.ve, result);

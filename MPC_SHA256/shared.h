@@ -16,12 +16,9 @@ Description : Common functions for the SHA-256 prover and verifier
 #ifdef _WIN32
 #include <openssl/applink.c>
 #endif
-#include "omp.h"
 #include <openssl/rand.h>
 #include <stdint.h>
 #include <string.h>
-
-#define VERBOSE FALSE
 
 static const int NUM_ROUNDS = 136;
 

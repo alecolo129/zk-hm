@@ -21,6 +21,8 @@ int mpc_MAJ_verify(uint32_t a[2], uint32_t b[2], uint32_t c[2], uint32_t z[3], V
 
 int mpc_CH_verify(uint32_t e[2], uint32_t f[2], uint32_t g[2], uint32_t z[2], View ve, View ve1, unsigned char randomness[2][2912], int* randCount, int* countY);
 
+int verify_hash(a a, int e, z z);
+int verify_hash2(a2 a, int e, z2 z);
 
 int verify(a a, int e, z z);
 
