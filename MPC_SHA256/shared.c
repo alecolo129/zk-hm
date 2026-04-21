@@ -1,5 +1,6 @@
 #include "shared.h"
 #include "omp.h"
+#include <stdint.h>
 omp_lock_t *locks;
 
 
@@ -57,6 +58,13 @@ void init_EVP() {
 void cleanup_EVP() {
 	EVP_cleanup();
 	ERR_free_strings();
+}
+
+void MD(const unsigned char* r, uint32_t r_len, unsigned char hash[SHA256_DIGEST_LENGTH]) {
+	SHA256_CTX ctx;
+	SHA256_Init(&ctx);
+	SHA256_Update(&ctx, r, r_len);
+	SHA256_Final(hash, &ctx);
 }
 
 void H(unsigned char k[16], View v, unsigned char r[4], unsigned char hash[SHA256_DIGEST_LENGTH]) {

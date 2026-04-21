@@ -38,7 +38,11 @@ static const uint32_t k[64] = {
     0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
     0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
 
+#define L_BYTES 128
+#define L_WORDS 32
+
 #define ySize 736
+#define y2Size L_WORDS
 
 // views
 typedef struct {
@@ -46,6 +50,7 @@ typedef struct {
                        // pre-processed)
   uint32_t y[ySize]; // output share (i.e., all the ADD/AND commits + the SHA256
                      // output)
+  uint32_t y2[y2Size + 1]; // ouput share (i.e., all the ADD/AND commits for the inner-product + the final bit)
 } View;
 
 // commitment
@@ -126,7 +131,7 @@ void init_EVP();
 void cleanup_EVP();
 
 // Hash
-
+void MD(const unsigned char* r, uint32_t r_len, unsigned char hash[SHA256_DIGEST_LENGTH]);
 void H(unsigned char k[16], View v, unsigned char r[4],
        unsigned char hash[SHA256_DIGEST_LENGTH]);
 void H2(unsigned char k[16], View2 v, unsigned char r[4],

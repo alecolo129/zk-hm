@@ -104,7 +104,7 @@ int main(void) {
     for (int i = 0; i < NUM_ROUNDS; i++) {
       int verifyResult = verify_hash2(a2s[i], es[i], z2s[i]);
       if (verifyResult != 0) {
-        printf("Not Verifiedd %d\n", i);
+        printf("Not Verified %d\n", i);
       } else {
         verifyResult = verify(as[c][i], es[i], zs[c][i]);
         if (verifyResult != 0) {
