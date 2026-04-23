@@ -29,5 +29,4 @@ z2 prove2(int e, unsigned char keys[3][16], unsigned char rs[3][4],
 void mpc_AND_impl(uint32_t x[3], uint32_t y[3], uint32_t z[3],
                   unsigned char *randomness[3], int *randCount,
                   uint32_t *y_views[3], int *countY);
-void mpc_XOR(uint32_t x[3], uint32_t y[3], uint32_t z[3]);
 #endif

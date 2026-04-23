@@ -2,6 +2,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-void mpc_inner_prod(uint32_t shares[3], uint32_t r[L_WORDS][3],
-                    uint32_t A[L_WORDS][3], unsigned char *randomness[3],
-                    View views[3], int *countY);
+void mpc_inner_prod_prover(const UniversalHash h, const uint32_t m[3],
+                           const uint32_t r[L_WORDS][3], uint32_t y[3]);
+
+bool mpc_inner_prod_verify(const UniversalHash h, const uint32_t m[2],
+                           const uint32_t r[L_WORDS][2], const uint32_t y[3],
+                           const uint32_t e);
+
+void generate_H(const uint8_t m, const uint32_t r[L_WORDS], uint32_t A[L_WORDS],
+                uint8_t *b);

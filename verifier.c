@@ -14,6 +14,7 @@
 #include <time.h>
 #include "shared.h"
 #include "MPC_SHA256_VERIFIER.h"
+#include "MPC_inner_prod.h"
 
 void printbits(uint32_t n) {
 	if (n) {
@@ -34,6 +35,7 @@ int main(void) {
 
 	clock_t begin = clock(), delta, deltaFiles;
 	
+	UniversalHash h;
 	a as[NUM_ROUNDS];
 	z zs[NUM_ROUNDS];
 	FILE *file;
@@ -43,11 +45,18 @@ int main(void) {
 	file = fopen(outputFile, "rb");
 	if (!file) {
 		printf("Unable to open file!");
+		exit(EXIT_FAILURE);
 	}
-	fread(&as, sizeof(a), NUM_ROUNDS, file);
-	fread(&zs, sizeof(z), NUM_ROUNDS, file);
+	int nRead = 0;
+	nRead += fread(&h, sizeof(h), 1, file);
+	nRead += fread(&as, sizeof(a), NUM_ROUNDS, file);
+	nRead += fread(&zs, sizeof(z), NUM_ROUNDS, file);
+	
 	fclose(file);
-
+	if(nRead != 2*NUM_ROUNDS+1){
+		printf("Unable to parse proof!\n");
+		exit(EXIT_FAILURE);
+	}
 
 	uint32_t y[8];
 	reconstruct(as[0].yp[0],as[0].yp[1],as[0].yp[2],y);
@@ -64,7 +73,7 @@ int main(void) {
 
 	clock_t beginE = clock(), deltaE;
 	int es[NUM_ROUNDS];
-	H3(y, as, NUM_ROUNDS, es);
+	H3(y, as, NUM_ROUNDS, h, es);
 	deltaE = clock() - beginE;
 	int inMilliE = deltaE * 1000 / CLOCKS_PER_SEC;
 	printf("Generating E: %ju\n", (uintmax_t)inMilliE);
@@ -73,9 +82,19 @@ int main(void) {
 	clock_t beginV = clock(), deltaV;
 	#pragma omp parallel for
 	for(int i = 0; i<NUM_ROUNDS; i++) {
-		int verifyResult = verify(as[i], es[i], zs[i]);
-		if (verifyResult != 0) {
-			printf("Not Verified %d\n", i);
+		int verifySha = verify(as[i], es[i], zs[i]);
+		if (verifySha != 0) {
+			printf("SHA256 not Verified %d\n", i);
+		}
+		uint32_t m[2] = {zs[i].ve.msg, zs[i].ve1.msg};
+		uint32_t r[L_WORDS][2]; 
+		for (int j = 0; j < L_WORDS; j++){
+			memcpy(&r[j][0], &zs[i].ve.x[j*4], sizeof(uint32_t));
+			memcpy(&r[j][1], &zs[i].ve1.x[j*4], sizeof(uint32_t));
+		}
+
+		if (!mpc_inner_prod_verify(h, m, r, as[i].y2p, es[i])){
+			printf("Inner product not verified!\n");
 		}
 	}
 	deltaV = clock() - beginV;
