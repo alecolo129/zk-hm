@@ -1,17 +1,17 @@
 CC = gcc
-CFLAGS = -O3 -fopenmp -I $(HOME)/openssl-1.0.2/include -I $(MPC_SHA_DIR) -I/usr/lib/gcc/x86_64-linux-gnu/13/include/
+CFLAGS = -O3 -fopenmp -I $(HOME)/openssl-1.0.2/include -I $(MPC_SHA_DIR) -I $(MPC_INNER_PROD_DIR) -I/usr/lib/gcc/x86_64-linux-gnu/13/include/
 LDFLAGS = $(HOME)/openssl-1.0.2/lib/libcrypto.a
 
 
-MPC_INNER_PROD = ./MPC_INNER_PROD
+MPC_INNER_PROD_DIR = ./MPC_INNER_PROD
 MPC_SHA_DIR = ./MPC_SHA256
 
-INNER_PROD_TEST_OBJS = $(MPC_INNER_PROD)/test_hm_commit.c $(MPC_INNER_PROD)/MPC_inner_prod.c $(MPC_SHA_DIR)/shared.c $(MPC_SHA_DIR)/MPC_SHA256.c
+INNER_PROD_TEST_OBJS = $(MPC_INNER_PROD_DIR)/test_hm_commit.c $(MPC_INNER_PROD_DIR)/MPC_inner_prod.c $(MPC_SHA_DIR)/shared.c
 
-PROVER_OBJS = prover.c $(MPC_SHA_DIR)/MPC_SHA256.c $(MPC_SHA_DIR)/shared.c
+PROVER_OBJS = prover.c $(MPC_SHA_DIR)/MPC_SHA256.c $(MPC_SHA_DIR)/shared.c $(MPC_INNER_PROD_DIR)/MPC_inner_prod.c
 PROVER_EQ_OBJS = prover_message_eq.c $(MPC_SHA_DIR)/MPC_SHA256.c $(MPC_SHA_DIR)/shared.c
 
-VERIFIER_OBJS = verifier.c $(MPC_SHA_DIR)/MPC_SHA256_VERIFIER.c $(MPC_SHA_DIR)/shared.c
+VERIFIER_OBJS = verifier.c $(MPC_SHA_DIR)/MPC_SHA256_VERIFIER.c $(MPC_SHA_DIR)/shared.c $(MPC_INNER_PROD_DIR)/MPC_inner_prod.c
 VERIFIER_EQ_OBJS = verifier_eq.c $(MPC_SHA_DIR)/MPC_SHA256_VERIFIER.c $(MPC_SHA_DIR)/shared.c
 
 all: make_dirs build test

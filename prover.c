@@ -1,4 +1,5 @@
 #include "MPC_SHA256.h"
+#include "MPC_inner_prod.h"
 #include "shared.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -9,7 +10,7 @@
 
 static int totalCrypto = 0;
 static int totalRandom = 0;
-static int totalSha = 0;
+static int totalHM = 0;
 static int totalSS = 0;
 static int totalHash = 0;
 
@@ -20,7 +21,7 @@ static int inMilliWrite = 0;
 static int inMilli = 0;
 
 void test_randomness() {
-  unsigned char garbage[4];
+  uint8_t garbage[4];
   if (RAND_bytes(garbage, 4) != 1) {
     printf("RAND_bytes failed crypto, aborting\n");
     exit(1);
@@ -58,8 +59,8 @@ void print_runtime(const char *outputFile) {
   sumOfParts += totalRandom;
   printf("	Sharing secrets: %ju\n", (uintmax_t)totalSS);
   sumOfParts += totalSS;
-  printf("	Running MPC-SHA2: %ju\n", (uintmax_t)totalSha);
-  sumOfParts += totalSha;
+  printf("	Running MPC-HM: %ju\n", (uintmax_t)totalHM);
+  sumOfParts += totalHM;
   printf("	Committing: %ju\n", (uintmax_t)totalHash);
   sumOfParts += totalHash;
   printf("	*Accounted for*: %ju\n", (uintmax_t)sumOfParts);
@@ -72,46 +73,53 @@ void print_runtime(const char *outputFile) {
 }
 
 // TODO: avoid potential leakages
-inline void RAND_bytes_no_fail(unsigned char *buf, int num) {
+inline void RAND_bytes_no_fail(uint8_t *buf, int num) {
   if (!RAND_bytes(buf, 1)) {
     printf("RAND_bytes failed crypto, aborting\n");
     exit(1);
   }
 }
 
-void generate_keys_and_rs(unsigned char keys[NUM_ROUNDS][3][16],
-                          unsigned char rs[NUM_ROUNDS][3][4]) {
-  RAND_bytes_no_fail((unsigned char *)keys, NUM_ROUNDS * 3 * 16);
-  RAND_bytes_no_fail((unsigned char *)rs, NUM_ROUNDS * 3 * 4);
+void generate_keys_and_rs(uint8_t keys[NUM_ROUNDS][3][16],
+                          uint8_t rs[NUM_ROUNDS][3][4]) {
+  RAND_bytes_no_fail((uint8_t *)keys, NUM_ROUNDS * 3 * 16);
+  RAND_bytes_no_fail((uint8_t *)rs, NUM_ROUNDS * 3 * 4);
 }
 
-void share_secret(int userInputLen,
-                  unsigned char shares[NUM_ROUNDS][3][userInputLen],
-                  const unsigned char input[userInputLen]) {
-  if (RAND_bytes((unsigned char *)shares, NUM_ROUNDS * 3 * userInputLen) != 1) {
+void share_secrets(uint8_t rShares[NUM_ROUNDS][3][L_BYTES],
+                   uint32_t msgShares[NUM_ROUNDS][3],
+                   const uint8_t rBytes[L_BYTES], const uint8_t msg) {
+  if (RAND_bytes((uint8_t *)rShares, NUM_ROUNDS * 3 * L_BYTES) != 1) {
     printf("RAND_bytes failed crypto, aborting\n");
     exit(1);
   }
 #pragma omp parallel for
   for (int k = 0; k < NUM_ROUNDS; k++) {
-
-    for (int j = 0; j < userInputLen; j++) {
-      shares[k][2][j] =
-          input[j] ^ shares[k][0][j] ^
-          shares[k][1][j]; // for each round, set share party_2 to input ^ share
-                           // party_0 ^ share party_1
+    for (int j = 0; j < L_BYTES; j++) {
+      rShares[k][2][j] =
+          rBytes[j] ^ rShares[k][0][j] ^
+          rShares[k][1][j]; // for each round, set share party_2 to input ^
+                            // share party_0 ^ share party_1
     }
+    msgShares[k][2] = msg ^ msgShares[k][0] ^
+                      msgShares[k][1]; // for each round, set share party_2 to
+                                       // input ^ share party_0 ^ share party_1
   }
 }
 
-void mpc_sha256_prover(int userInputLen,
-                       unsigned char shares[NUM_ROUNDS][3][userInputLen],
-                       unsigned char *randomness[NUM_ROUNDS][3],
-                       unsigned char rs[NUM_ROUNDS][3][4],
+void bytes_to_words(uint32_t rWords[L_WORDS], const uint8_t rBytes[L_BYTES]) {
+  for (int j = 0; j < L_WORDS; j++) {
+    memcpy(&rWords[j], &rBytes[j * 4], sizeof(uint32_t));
+  }
+}
+
+void mpc_sha256_prover(uint8_t shares[NUM_ROUNDS][3][L_BYTES],
+                       uint8_t *randomness[NUM_ROUNDS][3],
+                       uint8_t rs[NUM_ROUNDS][3][4],
                        View localViews[NUM_ROUNDS][3], a as[NUM_ROUNDS]) {
 #pragma omp parallel for
   for (int k = 0; k < NUM_ROUNDS; k++) {
-    commit(userInputLen, shares[k], randomness[k], rs[k], localViews[k]);
+    commit(L_BYTES, shares[k], randomness[k], rs[k], localViews[k]);
 
     // copy last part of the view.y (i.e., SHA256 output) into a.yp
     output(localViews[k][0], as[k].yp[0]);
@@ -125,12 +133,48 @@ void mpc_sha256_prover(int userInputLen,
   }
 }
 
-void hash_views(unsigned char keys[NUM_ROUNDS][3][16],
-                unsigned char rs[NUM_ROUNDS][3][4],
+void mpc_halevi_micali_prover(View localViews[NUM_ROUNDS][3], a as[NUM_ROUNDS],
+                              uint8_t *randomness[NUM_ROUNDS][3],
+                              uint8_t rs[NUM_ROUNDS][3][4],
+                              const UniversalHash h,
+                              uint8_t rShares[NUM_ROUNDS][3][L_BYTES],
+                              const uint32_t msgShares[NUM_ROUNDS][3]) {
+  for (int k = 0; k < NUM_ROUNDS; k++) {
+
+    // prove y = SHA256(r)
+    commit(L_BYTES, rShares[k], randomness[k], rs[k], localViews[k]);
+
+    // copy last part of the view.y (i.e., SHA256 output) into a.yp
+    output(localViews[k][0], as[k].yp[0]);
+    output(localViews[k][1], as[k].yp[1]);
+    output(localViews[k][2], as[k].yp[2]);
+
+    // TODO: free and allocate once
+    for (int j = 0; j < 3; j++) {
+      free(randomness[k][j]);
+    }
+
+    // prove H(r) = m
+    uint32_t rWords[L_WORDS][3];
+    for (int i = 0; i < L_WORDS; i++) {
+      memcpy(&rWords[i][0], &rShares[k][0][i * 4], sizeof(uint32_t));
+      memcpy(&rWords[i][1], &rShares[k][1][i * 4], sizeof(uint32_t));
+      memcpy(&rWords[i][2], &rShares[k][2][i * 4], sizeof(uint32_t));
+    }
+    // copy msg share into respective local view
+    localViews[k][0].msg = msgShares[k][0];
+    localViews[k][1].msg = msgShares[k][1];
+    localViews[k][2].msg = msgShares[k][2];
+
+    mpc_inner_prod_prover(h, msgShares[k], rWords, as[k].y2p);
+  }
+}
+
+void hash_views(uint8_t keys[NUM_ROUNDS][3][16], uint8_t rs[NUM_ROUNDS][3][4],
                 View localViews[NUM_ROUNDS][3], a as[NUM_ROUNDS]) {
 #pragma omp parallel for
   for (int k = 0; k < NUM_ROUNDS; k++) {
-    unsigned char hash1[SHA256_DIGEST_LENGTH];
+    uint8_t hash1[SHA256_DIGEST_LENGTH];
     H(keys[k][0], localViews[k][0], rs[k][0], hash1);
     memcpy(as[k].h[0], &hash1, 32);
     H(keys[k][1], localViews[k][1], rs[k][1], hash1);
@@ -140,47 +184,61 @@ void hash_views(unsigned char keys[NUM_ROUNDS][3][16],
   }
 }
 
-void generate_challenge(a as[NUM_ROUNDS], int es[NUM_ROUNDS]) {
+void generate_challenge(a as[NUM_ROUNDS], int es[NUM_ROUNDS],
+                        const UniversalHash h) {
   uint32_t finalHash[8];
   for (int j = 0; j < 8; j++) {
     finalHash[j] = as[0].yp[0][j] ^ as[0].yp[1][j] ^ as[0].yp[2][j];
   }
-  H3(finalHash, as, NUM_ROUNDS, es);
+  H3(finalHash, as, NUM_ROUNDS, h, es);
 }
 
-void write_to_file(a as[NUM_ROUNDS], z *zs,
-                   char outputFile[3 * sizeof(int) + 8]) {
+void pick_universal_hash(UniversalHash h, const uint8_t msg,
+                         const uint8_t rBytes[L_BYTES]) {
+  uint32_t rWords[L_WORDS];
+  bytes_to_words(rWords, rBytes);
+  RAND_bytes((uint8_t *)h.A, L_BYTES); // TODO: generate A from PRG and seed
+  generate_H(msg, rWords, h.A, &h.b);
+}
+
+void write_to_file(char outputFile[3 * sizeof(int) + 8], const a as[NUM_ROUNDS],
+                   const z *zs, const UniversalHash h) {
   FILE *file;
 
   sprintf(outputFile, "out%i.bin", NUM_ROUNDS);
   file = fopen(outputFile, "wb");
   if (!file) {
     printf("Unable to open file!");
-    exit(1);
+    exit(EXIT_FAILURE);
   }
-  fwrite(as, sizeof(a), NUM_ROUNDS, file);
-  fwrite(zs, sizeof(z), NUM_ROUNDS, file);
 
+  uint32_t nWrite = fwrite(&h, sizeof(h), 1, file);
+  nWrite += fwrite(as, sizeof(a), NUM_ROUNDS, file);
+  nWrite += fwrite(zs, sizeof(z), NUM_ROUNDS, file);
   fclose(file);
+
+  if (nWrite != 2 * NUM_ROUNDS + 1) {
+    printf("Failed to write proof!\n");
+    exit(EXIT_FAILURE);
+  }
 }
 
 int main(void) {
   init();
 
-  int userInputLen = 32;
-  unsigned char input[userInputLen];
-  RAND_bytes(input, 32);
+  uint8_t rBytes[L_BYTES]; // take random r in {0,1}^L
+  RAND_bytes((uint8_t *)rBytes,sizeof(rBytes));
+  uint8_t msg;
+  RAND_bytes(&msg, sizeof(msg));
 
   printf("Iterations of SHA: %d\n", NUM_ROUNDS);
 
   clock_t begin = clock();
-  // TODO: rs should have additional dimension
   // randomness for commitments to secret input: Com(x,r) = SHA-256(x,r)
-  unsigned char rs[NUM_ROUNDS][3][4]; // NUM_ROUNDS rounds * 3 parties * 32bits
-  unsigned char keys[NUM_ROUNDS][3]
-                    [16]; // NUM_ROUNDS rounds * 3 parties * 128bits
-  a as[NUM_ROUNDS];       // containes 32 bytes ouput for each view and the
-                          // commitments to the views
+  uint8_t rs[NUM_ROUNDS][3][4];    // NUM_ROUNDS rounds * 3 parties * 32bits
+  uint8_t keys[NUM_ROUNDS][3][16]; // NUM_ROUNDS rounds * 3 parties * 128bits
+  a as[NUM_ROUNDS]; // containes 32 bytes ouput for each view and the
+                    // commitments to the views
   View localViews[NUM_ROUNDS][3];
 
   // Generating keys
@@ -190,28 +248,29 @@ int main(void) {
 
   // Sharing secrets
   clock_t beginSS = clock();
-  unsigned char shares[NUM_ROUNDS][3]
-                      [userInputLen]; // 3 shares of len(user_input) bytes
-  share_secret(userInputLen, shares, input);
+  uint8_t rShares[NUM_ROUNDS][3][L_BYTES];
+  uint32_t msgShares[NUM_ROUNDS][3];
+  share_secrets(rShares, msgShares, rBytes, msg);
   update_clock(beginSS, &totalSS);
-
-  unsigned char
-      *randomness[NUM_ROUNDS][3]; // Randomness should have additional dimension
 
   // Generating randomness i.e., random tapes
   clock_t beginRandom = clock();
+  uint8_t *randomness[NUM_ROUNDS][3];
   generate_randomness(NUM_ROUNDS, keys, randomness);
   update_clock(beginRandom, &totalRandom);
 
-  // Running MPC-SHA2
-  clock_t beginSha = clock();
-  mpc_sha256_prover(userInputLen, shares, randomness, rs, localViews, as);
-  update_clock(beginSha, &totalSha);
+  // Running HM commitment
+  clock_t beginHM = clock();
+  UniversalHash h;
+  pick_universal_hash(h, msg, rBytes); // pick universal hash function
+  mpc_halevi_micali_prover(localViews, as, randomness, rs, h, rShares,
+                           msgShares);
+  update_clock(beginHM, &totalHM);
 
   // Committing
   clock_t beginHash = clock();
   hash_views(keys, rs, localViews, as);
-  update_clock(beginSha, &totalHash);
+  update_clock(beginHash, &totalHash);
 
   update_clock(begin, &inMilliA);
 
@@ -220,7 +279,7 @@ int main(void) {
   //  opened.
   clock_t beginE = clock();
   int es[NUM_ROUNDS];
-  generate_challenge(as, es);
+  generate_challenge(as, es, h);
   update_clock(beginE, &inMilliE);
 
   // Packing Z
@@ -239,7 +298,7 @@ int main(void) {
   // Writing to file
   clock_t beginWrite = clock();
   char outputFile[3 * sizeof(int) + 8];
-  write_to_file(as, zs, outputFile);
+  write_to_file(outputFile, as, zs, h);
   update_clock(beginWrite, &inMilliWrite);
 
   free(zs);

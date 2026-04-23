@@ -38,24 +38,31 @@ static const uint32_t k[64] = {
     0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
     0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
 
-#define L_BYTES 128
-#define L_WORDS 32
+#define L_BITS 416 //TODO: make this 1024 after supporting multiple chunks in mpc_sha256
+#define L_BYTES L_BITS/8 
+#define L_WORDS L_BITS/32
 
 #define ySize 736
 #define y2Size L_WORDS
 
+typedef struct {
+  uint32_t A[L_WORDS];
+  uint8_t b;
+} UniversalHash;
+
 // views
 typedef struct {
-  unsigned char x[64]; // secret input share = SHA256 input chunk (padded and
+  unsigned char x[L_BYTES]; // secret input share = SHA256 input chunk (padded and
                        // pre-processed)
+  uint8_t msg;        // share of the committed message          
   uint32_t y[ySize]; // output share (i.e., all the ADD/AND commits + the SHA256
                      // output)
-  uint32_t y2[y2Size + 1]; // ouput share (i.e., all the ADD/AND commits for the inner-product + the final bit)
 } View;
 
 // commitment
 typedef struct {
   uint32_t yp[3][8];      // SHA256 output of each party
+  uint32_t y2p[3];  
   unsigned char h[3][32]; // SHA256 of each party's key and view with commitment
                           // randomnes k
 } a;
@@ -123,6 +130,8 @@ void handleErrors(void);
 EVP_CIPHER_CTX setupAES(unsigned char key[16]);
 
 void getAllRandomness(unsigned char key[16], unsigned char randomness[2912]);
+void getAllRandomness2(unsigned char key[16], unsigned char *randomness,
+                       int randSize);
 
 uint32_t getRandom32(unsigned char randomness[2912], int randCount);
 
@@ -131,13 +140,14 @@ void init_EVP();
 void cleanup_EVP();
 
 // Hash
-void MD(const unsigned char* r, uint32_t r_len, unsigned char hash[SHA256_DIGEST_LENGTH]);
+void MD(const unsigned char *r, uint32_t r_len,
+        unsigned char hash[SHA256_DIGEST_LENGTH]);
 void H(unsigned char k[16], View v, unsigned char r[4],
        unsigned char hash[SHA256_DIGEST_LENGTH]);
 void H2(unsigned char k[16], View2 v, unsigned char r[4],
         unsigned char hash[SHA256_DIGEST_LENGTH]);
 
-void H3(uint32_t y[8], a *as, int s, int *es);
+void H3(uint32_t y[8], a *as, int s, const UniversalHash h, int *es);
 void H3_2(uint32_t y[8], a2 *as, int s, int *es);
 
 inline void output2(View2 v[3], a2 *a) {
@@ -158,6 +168,13 @@ inline void reconstruct(uint32_t *y0, uint32_t *y1, uint32_t *y2,
     result[i] = y0[i] ^ y1[i] ^ y2[i];
   }
 }
+
+inline void mpc_XOR(uint32_t x[3], uint32_t y[3], uint32_t z[3]) {
+  z[0] = x[0] ^ y[0];
+  z[1] = x[1] ^ y[1];
+  z[2] = x[2] ^ y[2];
+}
+
 
 inline void mpc_XOR2(uint32_t x[2], uint32_t y[2], uint32_t z[2]) {
   z[0] = x[0] ^ y[0];

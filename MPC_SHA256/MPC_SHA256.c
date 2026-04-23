@@ -55,12 +55,6 @@ void printbits(uint32_t n) {
   }
 }
 
-void mpc_XOR(uint32_t x[3], uint32_t y[3], uint32_t z[3]) {
-  z[0] = x[0] ^ y[0];
-  z[1] = x[1] ^ y[1];
-  z[2] = x[2] ^ y[2];
-}
-
 void mpc_AND(uint32_t x[3], uint32_t y[3], uint32_t z[3],
              unsigned char *randomness[3], int *randCount, View views[3],
              int *countY) {
@@ -226,6 +220,9 @@ int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3], int numBits,
     chunks[i] = calloc(64, 1); // 512 bits
     memcpy(chunks[i], inputs[i],
            chars);           // copy original share[i] in respective chunk[i]
+    memcpy(views.x[i], inputs[i],
+           chars); // set each party's SHA-256 input as it's secret share x
+
     chunks[i][chars] = 0x80; // append 1
     // Last 8 chars used for storing length of input without padding, in
     // big-endian. Since we only care for one block, we are safe with just using
@@ -235,8 +232,6 @@ int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3], int numBits,
     // chunk[61] = numBits >> 16;
     chunks[i][62] = numBits >> 8;
     chunks[i][63] = numBits;
-    memcpy(views.x[i], chunks[i],
-           64); // set each party's SHA-256 input chunk as it's secret share x
 
     for (int j = 0; j < 16; j++) {
       w[j][i] = (chunks[i][j * 4] << 24) | (chunks[i][j * 4 + 1] << 16) |
