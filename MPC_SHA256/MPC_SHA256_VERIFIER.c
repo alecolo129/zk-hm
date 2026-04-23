@@ -1,5 +1,6 @@
 #include "MPC_SHA256_VERIFIER.h"
 #include "shared.h"
+#include "stdbool.h"
 #include <stdint.h>
 #include <string.h>
 #define VERBOSE 1
@@ -85,7 +86,7 @@ inline int mpc_CH_verify(uint32_t e[2], uint32_t f[2], uint32_t g[2],
   return 0;
 }
 
-int verify_hash(a a, int e, z z) {
+bool verify_hash(a a, int e, z z) {
 
   unsigned char *hash = malloc(SHA256_DIGEST_LENGTH);
 
@@ -94,7 +95,7 @@ int verify_hash(a a, int e, z z) {
 #if VERBOSE
     printf("Failing at %d", __LINE__);
 #endif
-    return 1;
+    return false;
   }
 
   H(z.ke1, z.ve1, z.re1, hash);
@@ -102,11 +103,11 @@ int verify_hash(a a, int e, z z) {
 #if VERBOSE
     printf("Failing at %d", __LINE__);
 #endif
-    return 1;
+    return false;
   }
 
   free(hash);
-  return 0;
+  return true;
 }
 
 int verify_hash2(a2 a, int e, z2 z) {
