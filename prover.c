@@ -113,32 +113,13 @@ void bytes_to_words(uint32_t rWords[L_WORDS], const uint8_t rBytes[L_BYTES]) {
   }
 }
 
-void mpc_sha256_prover(uint8_t shares[NUM_ROUNDS][3][L_BYTES],
-                       uint8_t *randomness[NUM_ROUNDS][3],
-                       uint8_t rs[NUM_ROUNDS][3][4],
-                       View localViews[NUM_ROUNDS][3], a as[NUM_ROUNDS]) {
-#pragma omp parallel for
-  for (int k = 0; k < NUM_ROUNDS; k++) {
-    commit(L_BYTES, shares[k], randomness[k], rs[k], localViews[k]);
-
-    // copy last part of the view.y (i.e., SHA256 output) into a.yp
-    output(localViews[k][0], as[k].yp[0]);
-    output(localViews[k][1], as[k].yp[1]);
-    output(localViews[k][2], as[k].yp[2]);
-
-    // TODO: free and allocate once
-    for (int j = 0; j < 3; j++) {
-      free(randomness[k][j]);
-    }
-  }
-}
-
 void mpc_halevi_micali_prover(View localViews[NUM_ROUNDS][3], a as[NUM_ROUNDS],
                               uint8_t *randomness[NUM_ROUNDS][3],
                               uint8_t rs[NUM_ROUNDS][3][4],
                               const UniversalHash h,
                               uint8_t rShares[NUM_ROUNDS][3][L_BYTES],
                               const uint32_t msgShares[NUM_ROUNDS][3]) {
+#pragma omp parallel for
   for (int k = 0; k < NUM_ROUNDS; k++) {
 
     // prove y = SHA256(r)
