@@ -127,7 +127,7 @@ typedef struct {
 
 void handleErrors(void);
 
-EVP_CIPHER_CTX setupAES(unsigned char key[16]);
+EVP_CIPHER_CTX *setupAES(unsigned char key[16]);
 
 void getAllRandomness(unsigned char key[16], unsigned char randomness[2912]);
 void getAllRandomness2(unsigned char key[16], unsigned char *randomness,

@@ -1,6 +1,6 @@
 CC = gcc
-CFLAGS = -O3 -fopenmp -I $(HOME)/openssl-1.0.2/include -I $(MPC_SHA_DIR) -I $(MPC_INNER_PROD_DIR) -I/usr/lib/gcc/x86_64-linux-gnu/13/include/
-LDFLAGS = $(HOME)/openssl-1.0.2/lib/libcrypto.a
+CFLAGS = -O3 -fopenmp -I $(MPC_SHA_DIR) -I $(MPC_INNER_PROD_DIR) -I/usr/lib/gcc/x86_64-linux-gnu/13/include/
+LDLIBS += -lcrypto
 
 
 MPC_INNER_PROD_DIR = ./MPC_INNER_PROD
@@ -18,22 +18,23 @@ all: make_dirs build test
 
 build: test prover_mpc_sha256 verifier_mpc_sha256 prover_mpc_sha256_eq verifier_mpc_sha256_eq
 
-inner_prod_test:
-	$(CC) $(INNER_PROD_TEST_OBJS) $(CFLAGS) $(LDFLAGS) -o test/$@
 
 prover_mpc_sha256: $(PROVER_OBJS)
-	$(CC) $(PROVER_OBJS) $(CFLAGS) $(LDFLAGS) -o build/$@
+	$(CC) $(PROVER_OBJS) $(CFLAGS) -o build/$@ $(LDLIBS)
 
 verifier_mpc_sha256: $(VERIFIER_OBJS)
-	$(CC) $(VERIFIER_OBJS) $(CFLAGS) $(LDFLAGS) -o build/$@
+	$(CC) $(VERIFIER_OBJS) $(CFLAGS) -o build/$@ $(LDLIBS)
 
 prover_mpc_sha256_eq: $(PROVER_EQ_OBJS)
-	$(CC) $(PROVER_EQ_OBJS) $(CFLAGS) $(LDFLAGS) -o build/$@
+	$(CC) $(PROVER_EQ_OBJS) $(CFLAGS) -o build/$@ $(LDLIBS)
 
 verifier_mpc_sha256_eq: $(VERIFIER_EQ_OBJS)
-	$(CC) $(VERIFIER_EQ_OBJS) $(CFLAGS) $(LDFLAGS) -o build/$@
+	$(CC) $(VERIFIER_EQ_OBJS) $(CFLAGS) -o build/$@ $(LDLIBS)
 
 test: inner_prod_test
+
+inner_prod_test:
+	$(CC) $(INNER_PROD_TEST_OBJS) $(CFLAGS) -o test/$@ $(LDLIBS)
 
 make_dirs:
 	mkdir -p build test

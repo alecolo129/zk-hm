@@ -1,7 +1,10 @@
 #include "shared.h"
 #include "omp.h"
 #include "openssl/sha.h"
+#include <openssl/evp.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <strings.h>
 omp_lock_t *locks;
 
 void handleErrors(void) {
@@ -13,30 +16,36 @@ void getAllRandomness(unsigned char key[16], unsigned char randomness[2912]) {
   // Generate randomness: We use 728*32 bit of randomness per key.
   // Since AES block size is 128 bit, we need to run 728*32/128 = 182 iterations
 
-  EVP_CIPHER_CTX ctx;
-  ctx = setupAES(key);
-  unsigned char *plaintext = (unsigned char *)"0000000000000000";
+  EVP_CIPHER_CTX *ctx = setupAES(key);
+  if (ctx == NULL) {
+    handleErrors();
+  }
+  unsigned char plaintext[16] = {'0', '0', '0', '0', '0', '0', '0', '0',
+                                 '0', '0', '0', '0', '0', '0', '0', '0'};
+
   int len;
   for (int j = 0; j < 182; j++) {
-    if (1 != EVP_EncryptUpdate(&ctx, &randomness[j * 16], &len, plaintext,
-                               strlen((char *)plaintext)))
+    if (1 != EVP_EncryptUpdate(ctx, &randomness[j * 16], &len, plaintext,
+                               16))
       handleErrors();
   }
-  EVP_CIPHER_CTX_cleanup(&ctx);
+  EVP_CIPHER_CTX_free(ctx);
 }
 
 void getAllRandomness2(unsigned char key[16], unsigned char *randomness,
                        int randSize) {
-  EVP_CIPHER_CTX ctx;
+  EVP_CIPHER_CTX *ctx;
   ctx = setupAES(key);
-  unsigned char *plaintext = (unsigned char *)"0000000000000000";
+  unsigned char plaintext[16] = {'0', '0', '0', '0', '0', '0', '0', '0',
+                                 '0', '0', '0', '0', '0', '0', '0', '0'};
+
   int len;
-  for (int j = 0; j < randSize / 128; j++) {
-    if (1 != EVP_EncryptUpdate(&ctx, &randomness[j * 16], &len, plaintext,
-                               strlen((char *)plaintext)))
+  for (int j = 0; j < randSize / 16; j++) {
+    if (1 != EVP_EncryptUpdate(ctx, &randomness[j * 16], &len, plaintext,
+                               16))
       handleErrors();
   }
-  EVP_CIPHER_CTX_cleanup(&ctx);
+  EVP_CIPHER_CTX_free(ctx);
 }
 
 uint32_t getRandom32(unsigned char randomness[2912], int randCount) {
@@ -45,68 +54,67 @@ uint32_t getRandom32(unsigned char randomness[2912], int randCount) {
   return ret;
 }
 
-EVP_CIPHER_CTX setupAES(unsigned char key[16]) {
-  EVP_CIPHER_CTX ctx;
-  EVP_CIPHER_CTX_init(&ctx);
+EVP_CIPHER_CTX *setupAES(unsigned char key[16]) {
+  EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+  if (ctx == NULL)
+    handleErrors();
 
   /* A 128 bit IV */
-  unsigned char *iv = (unsigned char *)"01234567890123456";
+  unsigned char iv[16] = "0123456789012345";
 
-  if (1 != EVP_EncryptInit_ex(&ctx, EVP_aes_128_ctr(), NULL, key, iv))
+  if (1 != EVP_EncryptInit_ex(ctx, EVP_aes_128_ctr(), NULL, key, iv))
     handleErrors();
 
   return ctx;
 }
 
-void init_EVP() {
-  ERR_load_crypto_strings();
-  OpenSSL_add_all_algorithms();
-  OPENSSL_config(NULL);
-}
+EVP_MD_CTX *setupSHA256() {
+  EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+  if (ctx == NULL)
+    handleErrors();
 
-void cleanup_EVP() {
-  EVP_cleanup();
-  ERR_free_strings();
+  if (1 != EVP_DigestInit_ex(ctx, EVP_sha256(), NULL))
+    handleErrors();
+  return ctx;
 }
 
 void MD(const unsigned char *r, uint32_t r_len,
         unsigned char hash[SHA256_DIGEST_LENGTH]) {
-  SHA256_CTX ctx;
-  SHA256_Init(&ctx);
-  SHA256_Update(&ctx, r, r_len);
-  SHA256_Final(hash, &ctx);
+  SHA256(r, r_len, hash);
 }
 
 void H(unsigned char k[16], View v, unsigned char r[4],
        unsigned char hash[SHA256_DIGEST_LENGTH]) {
-  SHA256_CTX ctx;
-  SHA256_Init(&ctx);
-  SHA256_Update(&ctx, k, 16);
-  SHA256_Update(&ctx, &v, sizeof(v));
-  SHA256_Update(&ctx, r, 4);
-  SHA256_Final(hash, &ctx);
+  EVP_MD_CTX *ctx = setupSHA256();
+  EVP_DigestUpdate(ctx, k, 16);
+  EVP_DigestUpdate(ctx, &v, sizeof(v));
+  EVP_DigestUpdate(ctx, r, 4);
+  uint32_t outlen = 0;
+  EVP_DigestFinal_ex(ctx, hash, &outlen);
+  EVP_MD_CTX_free(ctx);
 }
 
 void H2(unsigned char k[16], View2 v, unsigned char r[4],
         unsigned char hash[SHA256_DIGEST_LENGTH]) {
-  SHA256_CTX ctx;
-  SHA256_Init(&ctx);
-  SHA256_Update(&ctx, k, 16);
-  SHA256_Update(&ctx, &v, sizeof(v));
-  SHA256_Update(&ctx, r, 4);
-  SHA256_Final(hash, &ctx);
+  EVP_MD_CTX *ctx = setupSHA256();
+  EVP_DigestUpdate(ctx, k, 16);
+  EVP_DigestUpdate(ctx, &v, sizeof(v));
+  EVP_DigestUpdate(ctx, r, 4);
+  uint32_t outlen = 0;
+  EVP_DigestFinal_ex(ctx, hash, &outlen);
+  EVP_MD_CTX_free(ctx);
 }
 
 void H3(uint32_t y[8], a *as, int s, const UniversalHash h, int *es) {
 
   unsigned char hash[SHA256_DIGEST_LENGTH];
-  SHA256_CTX ctx;
-  SHA256_Init(&ctx);
-  SHA256_Update(&ctx, y, 32);
-  SHA256_Update(&ctx, as, sizeof(a) * s);
-  SHA256_Update(&ctx, h.A, L_BYTES);
-  SHA256_Update(&ctx, &h.b, sizeof(h.b));
-  SHA256_Final(hash, &ctx);
+  EVP_MD_CTX *ctx = setupSHA256();
+  EVP_DigestUpdate(ctx, y, 32);
+  EVP_DigestUpdate(ctx, as, sizeof(a) * s);
+  EVP_DigestUpdate(ctx, h.A, L_BYTES);
+  EVP_DigestUpdate(ctx, &h.b, sizeof(h.b));
+  uint32_t outlen = 0;
+  EVP_DigestFinal_ex(ctx, hash, &outlen);
 
   // Pick bits from hash
   int i = 0;
@@ -115,9 +123,9 @@ void H3(uint32_t y[8], a *as, int s, const UniversalHash h, int *es) {
     if (bitTracker >=
         SHA256_DIGEST_LENGTH * 8) { // Generate new hash as we have run out of
                                     // bits in the previous hash
-      SHA256_Init(&ctx);
-      SHA256_Update(&ctx, hash, sizeof(hash));
-      SHA256_Final(hash, &ctx);
+      EVP_DigestInit_ex(ctx, EVP_sha256(), NULL);
+      EVP_DigestUpdate(ctx, hash, sizeof(hash));
+      EVP_DigestFinal_ex(ctx, hash, &outlen);
       bitTracker = 0;
     }
 
@@ -143,16 +151,17 @@ void H3(uint32_t y[8], a *as, int s, const UniversalHash h, int *es) {
       }
     }
   }
+  EVP_MD_CTX_free(ctx);
 }
 
 void H3_2(uint32_t y[8], a2 *as, int s, int *es) {
 
   unsigned char hash[SHA256_DIGEST_LENGTH];
-  SHA256_CTX ctx;
-  SHA256_Init(&ctx);
-  SHA256_Update(&ctx, y, 32);
-  SHA256_Update(&ctx, as, sizeof(a) * s);
-  SHA256_Final(hash, &ctx);
+  EVP_MD_CTX *ctx = setupSHA256();
+  EVP_DigestUpdate(ctx, y, 32);
+  EVP_DigestUpdate(ctx, as, sizeof(a2) * s);
+  uint32_t outlen = 0;
+  EVP_DigestFinal_ex(ctx, hash, &outlen);
 
   // Pick bits from hash
   int i = 0;
@@ -161,9 +170,9 @@ void H3_2(uint32_t y[8], a2 *as, int s, int *es) {
     if (bitTracker >=
         SHA256_DIGEST_LENGTH * 8) { // Generate new hash as we have run out of
                                     // bits in the previous hash
-      SHA256_Init(&ctx);
-      SHA256_Update(&ctx, hash, sizeof(hash));
-      SHA256_Final(hash, &ctx);
+      EVP_DigestInit_ex(ctx, EVP_sha256(), NULL);
+      EVP_DigestUpdate(ctx, hash, sizeof(hash));
+      EVP_DigestFinal_ex(ctx, hash, &outlen);
       bitTracker = 0;
     }
 
@@ -189,6 +198,7 @@ void H3_2(uint32_t y[8], a2 *as, int s, int *es) {
       }
     }
   }
+  EVP_MD_CTX_free(ctx);
 }
 
 void openmp_locking_callback(int mode, int type, char *file, int line) {

@@ -25,7 +25,6 @@ void printbits(uint32_t n) {
 
 int main(void) {
   setbuf(stdout, NULL);
-  init_EVP();
   openmp_thread_setup();
 
   printf("Iterations of SHA: %d\n", NUM_ROUNDS);
@@ -124,6 +123,5 @@ int main(void) {
   printf("Total time: %ju\n", (uintmax_t)inMilli);
 
   openmp_thread_cleanup();
-  cleanup_EVP();
   return EXIT_SUCCESS;
 }

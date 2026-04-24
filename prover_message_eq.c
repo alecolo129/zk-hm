@@ -22,13 +22,11 @@ static int inMilli = 0;
 void init() {
   setbuf(stdout, NULL);
   srand((unsigned)time(NULL));
-  init_EVP();
   openmp_thread_setup();
 }
 
 void cleanup() {
   openmp_thread_cleanup();
-  cleanup_EVP();
 }
 
 inline void update_clock(clock_t beginClock, int *clockToUpdate) {

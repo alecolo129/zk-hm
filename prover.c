@@ -33,7 +33,6 @@ void test_randomness() {
 void init() {
   setbuf(stdout, NULL);
   srand((unsigned)time(NULL));
-  init_EVP();
   openmp_thread_setup();
 
   test_randomness();
@@ -41,7 +40,6 @@ void init() {
 
 void cleanup() {
   openmp_thread_cleanup();
-  cleanup_EVP();
 }
 
 static inline void update_clock(double beginClock, double *clockToUpdate) {
@@ -209,9 +207,9 @@ int main(void) {
   init();
 
   uint8_t rBytes[L_BYTES]; // take random r in {0,1}^L
-  RAND_bytes((uint8_t *)rBytes, sizeof(rBytes));
+  RAND_bytes_no_fail((uint8_t *)rBytes, sizeof(rBytes));
   uint8_t msg;
-  RAND_bytes(&msg, sizeof(msg));
+  RAND_bytes_no_fail(&msg, sizeof(msg));
 
   printf("Iterations of SHA: %d\n", NUM_ROUNDS);
 
