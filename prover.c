@@ -1,6 +1,8 @@
 #include "MPC_SHA256.h"
 #include "MPC_inner_prod.h"
+#include "omp.h"
 #include "shared.h"
+#include <bits/time.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -8,17 +10,17 @@
 #include <string.h>
 #include <time.h>
 
-static int totalCrypto = 0;
-static int totalRandom = 0;
-static int totalHM = 0;
-static int totalSS = 0;
-static int totalHash = 0;
+static double totalCrypto = 0;
+static double totalRandom = 0;
+static double totalHM = 0;
+static double totalSS = 0;
+static double totalHash = 0;
 
-static int inMilliA = 0;
-static int inMilliE = 0;
-static int inMilliZ = 0;
-static int inMilliWrite = 0;
-static int inMilli = 0;
+static double inMilliA = 0;
+static double inMilliE = 0;
+static double inMilliZ = 0;
+static double inMilliWrite = 0;
+static double inMilli = 0;
 
 void test_randomness() {
   uint8_t garbage[4];
@@ -42,32 +44,31 @@ void cleanup() {
   cleanup_EVP();
 }
 
-inline void update_clock(clock_t beginClock, int *clockToUpdate) {
-  clock_t deltaT = clock() - beginClock;
-  int inMilli = deltaT * 1000 / CLOCKS_PER_SEC;
-  *clockToUpdate += inMilli;
+static inline void update_clock(double beginClock, double *clockToUpdate) {
+  double deltaT = (omp_get_wtime() - beginClock) * 1000;
+  *clockToUpdate += deltaT;
 }
 
 void print_runtime(const char *outputFile) {
 
-  int sumOfParts = 0;
+  double sumOfParts = 0;
 
-  printf("Generating A: %ju\n", (uintmax_t)inMilliA);
-  printf("	Generating keys: %ju\n", (uintmax_t)totalCrypto);
+  printf("Generating A: %f\n", inMilliA);
+  printf("	Generating keys: %f\n", totalCrypto);
   sumOfParts += totalCrypto;
-  printf("	Generating randomness: %ju\n", (uintmax_t)totalRandom);
+  printf("	Generating randomness: %f\n", totalRandom);
   sumOfParts += totalRandom;
-  printf("	Sharing secrets: %ju\n", (uintmax_t)totalSS);
+  printf("	Sharing secrets: %f\n", totalSS);
   sumOfParts += totalSS;
-  printf("	Running MPC-HM: %ju\n", (uintmax_t)totalHM);
+  printf("	Running MPC-HM: %f\n", totalHM);
   sumOfParts += totalHM;
-  printf("	Committing: %ju\n", (uintmax_t)totalHash);
+  printf("	Committing: %f\n", totalHash);
   sumOfParts += totalHash;
-  printf("	*Accounted for*: %ju\n", (uintmax_t)sumOfParts);
-  printf("Generating E: %ju\n", (uintmax_t)inMilliE);
-  printf("Packing Z: %ju\n", (uintmax_t)inMilliZ);
-  printf("Writing file: %ju\n", (uintmax_t)inMilliWrite);
-  printf("Total: %d\n", inMilli);
+  printf("	*Accounted for*: %f\n", sumOfParts);
+  printf("Generating E: %f\n", inMilliE);
+  printf("Packing Z: %f\n", inMilliZ);
+  printf("Writing file: %f\n", inMilliWrite);
+  printf("Total: %f\n", inMilli);
   printf("\n");
   printf("Proof output to file %s\n", outputFile);
 }
@@ -208,13 +209,13 @@ int main(void) {
   init();
 
   uint8_t rBytes[L_BYTES]; // take random r in {0,1}^L
-  RAND_bytes((uint8_t *)rBytes,sizeof(rBytes));
+  RAND_bytes((uint8_t *)rBytes, sizeof(rBytes));
   uint8_t msg;
   RAND_bytes(&msg, sizeof(msg));
 
   printf("Iterations of SHA: %d\n", NUM_ROUNDS);
 
-  clock_t begin = clock();
+  double begin = omp_get_wtime();
   // randomness for commitments to secret input: Com(x,r) = SHA-256(x,r)
   uint8_t rs[NUM_ROUNDS][3][4];    // NUM_ROUNDS rounds * 3 parties * 32bits
   uint8_t keys[NUM_ROUNDS][3][16]; // NUM_ROUNDS rounds * 3 parties * 128bits
@@ -223,25 +224,25 @@ int main(void) {
   View localViews[NUM_ROUNDS][3];
 
   // Generating keys
-  clock_t beginCrypto = clock();
+  double beginCrypto = omp_get_wtime();
   generate_keys_and_rs(keys, rs);
   update_clock(beginCrypto, &totalCrypto);
 
   // Sharing secrets
-  clock_t beginSS = clock();
+  double beginSS = omp_get_wtime();
   uint8_t rShares[NUM_ROUNDS][3][L_BYTES];
   uint32_t msgShares[NUM_ROUNDS][3];
   share_secrets(rShares, msgShares, rBytes, msg);
   update_clock(beginSS, &totalSS);
 
   // Generating randomness i.e., random tapes
-  clock_t beginRandom = clock();
+  double beginRandom = omp_get_wtime();
   uint8_t *randomness[NUM_ROUNDS][3];
   generate_randomness(NUM_ROUNDS, keys, randomness);
   update_clock(beginRandom, &totalRandom);
 
   // Running HM commitment
-  clock_t beginHM = clock();
+  double beginHM = omp_get_wtime();
   UniversalHash h;
   pick_universal_hash(h, msg, rBytes); // pick universal hash function
   mpc_halevi_micali_prover(localViews, as, randomness, rs, h, rShares,
@@ -249,7 +250,7 @@ int main(void) {
   update_clock(beginHM, &totalHM);
 
   // Committing
-  clock_t beginHash = clock();
+  double beginHash = omp_get_wtime();
   hash_views(keys, rs, localViews, as);
   update_clock(beginHash, &totalHash);
 
@@ -258,13 +259,13 @@ int main(void) {
   // Generating E
   //  Note: E is the challenge that determines which 2 of the 3 views must be
   //  opened.
-  clock_t beginE = clock();
+  double beginE = omp_get_wtime();
   int es[NUM_ROUNDS];
   generate_challenge(as, es, h);
   update_clock(beginE, &inMilliE);
 
   // Packing Z
-  clock_t beginZ;
+  double beginZ = omp_get_wtime();
   z *zs = malloc(sizeof(z) * NUM_ROUNDS);
 
 // Generate proof
@@ -277,7 +278,7 @@ int main(void) {
   update_clock(beginZ, &inMilliZ);
 
   // Writing to file
-  clock_t beginWrite = clock();
+  double beginWrite = omp_get_wtime();
   char outputFile[3 * sizeof(int) + 8];
   write_to_file(outputFile, as, zs, h);
   update_clock(beginWrite, &inMilliWrite);
