@@ -54,13 +54,10 @@ uint32_t getRandom32(unsigned char randomness[2912], int randCount) {
   return ret;
 }
 
-EVP_CIPHER_CTX *setupAES(unsigned char key[16]) {
+EVP_CIPHER_CTX *setupAES(const unsigned char key[16]) {
   EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
   if (ctx == NULL)
     handleErrors();
-
-  /* A 128 bit IV */
-  unsigned char iv[16] = "0123456789012345";
 
   if (1 != EVP_EncryptInit_ex(ctx, EVP_aes_128_ctr(), NULL, key, iv))
     handleErrors();

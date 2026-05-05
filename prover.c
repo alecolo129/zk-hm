@@ -38,9 +38,7 @@ void init() {
   test_randomness();
 }
 
-void cleanup() {
-  openmp_thread_cleanup();
-}
+void cleanup() { openmp_thread_cleanup(); }
 
 static inline void update_clock(double beginClock, double *clockToUpdate) {
   double deltaT = (omp_get_wtime() - beginClock) * 1000;
@@ -73,25 +71,24 @@ void print_runtime(const char *outputFile) {
 
 // TODO: avoid potential leakages
 inline void RAND_bytes_no_fail(uint8_t *buf, int num) {
-  if (!RAND_bytes(buf, 1)) {
+  if (!RAND_bytes(buf, num)) {
     printf("RAND_bytes failed crypto, aborting\n");
     exit(1);
   }
 }
 
-void generate_keys_and_rs(uint8_t keys[NUM_ROUNDS][3][16],
+void generate_keys_and_rs(uint8_t keys[NUM_ROUNDS][3][16], uint8_t keyH[16],
                           uint8_t rs[NUM_ROUNDS][3][4]) {
   RAND_bytes_no_fail((uint8_t *)keys, NUM_ROUNDS * 3 * 16);
+  RAND_bytes_no_fail((uint8_t *)keyH, 16);
   RAND_bytes_no_fail((uint8_t *)rs, NUM_ROUNDS * 3 * 4);
 }
 
 void share_secrets(uint8_t rShares[NUM_ROUNDS][3][L_BYTES],
                    uint32_t msgShares[NUM_ROUNDS][3],
                    const uint8_t rBytes[L_BYTES], const uint8_t msg) {
-  if (RAND_bytes((uint8_t *)rShares, NUM_ROUNDS * 3 * L_BYTES) != 1) {
-    printf("RAND_bytes failed crypto, aborting\n");
-    exit(1);
-  }
+  RAND_bytes_no_fail((uint8_t *)rShares, NUM_ROUNDS * 3 * L_BYTES);
+  RAND_bytes_no_fail((uint8_t *)msgShares, NUM_ROUNDS * 3 * sizeof(uint32_t));
 #pragma omp parallel for
   for (int k = 0; k < NUM_ROUNDS; k++) {
     for (int j = 0; j < L_BYTES; j++) {
@@ -100,6 +97,8 @@ void share_secrets(uint8_t rShares[NUM_ROUNDS][3][L_BYTES],
           rShares[k][1][j]; // for each round, set share party_2 to input ^
                             // share party_0 ^ share party_1
     }
+    msgShares[k][0] &= 1;
+    msgShares[k][1] &= 1;
     msgShares[k][2] = msg ^ msgShares[k][0] ^
                       msgShares[k][1]; // for each round, set share party_2 to
                                        // input ^ share party_0 ^ share party_1
@@ -173,16 +172,15 @@ void generate_challenge(a as[NUM_ROUNDS], int es[NUM_ROUNDS],
   H3(finalHash, as, NUM_ROUNDS, h, es);
 }
 
-void pick_universal_hash(UniversalHash h, const uint8_t msg,
-                         const uint8_t rBytes[L_BYTES]) {
+void pick_universal_hash(UniversalHash *h, const uint8_t keyA[16],
+                         const uint8_t rBytes[L_BYTES], const uint8_t msg) {
   uint32_t rWords[L_WORDS];
   bytes_to_words(rWords, rBytes);
-  RAND_bytes((uint8_t *)h.A, L_BYTES); // TODO: generate A from PRG and seed
-  generate_H(msg, rWords, h.A, &h.b);
+  generate_H(h->A, &h->b, keyA, msg, rWords);
 }
 
 void write_to_file(char outputFile[3 * sizeof(int) + 8], const a as[NUM_ROUNDS],
-                   const z *zs, const UniversalHash h) {
+                   const z *zs, const uint8_t keyA[16], const UniversalHash h) {
   FILE *file;
 
   sprintf(outputFile, "out%i.bin", NUM_ROUNDS);
@@ -192,12 +190,13 @@ void write_to_file(char outputFile[3 * sizeof(int) + 8], const a as[NUM_ROUNDS],
     exit(EXIT_FAILURE);
   }
 
-  uint32_t nWrite = fwrite(&h, sizeof(h), 1, file);
+  uint32_t nWrite = fwrite(keyA, 16, 1, file);
+  nWrite += fwrite(&h.b, sizeof(h.b), 1, file);
   nWrite += fwrite(as, sizeof(a), NUM_ROUNDS, file);
   nWrite += fwrite(zs, sizeof(z), NUM_ROUNDS, file);
   fclose(file);
 
-  if (nWrite != 2 * NUM_ROUNDS + 1) {
+  if (nWrite != 2 * NUM_ROUNDS + 2) {
     printf("Failed to write proof!\n");
     exit(EXIT_FAILURE);
   }
@@ -206,24 +205,24 @@ void write_to_file(char outputFile[3 * sizeof(int) + 8], const a as[NUM_ROUNDS],
 int main(void) {
   init();
 
-  uint8_t rBytes[L_BYTES]; // take random r in {0,1}^L
-  RAND_bytes_no_fail((uint8_t *)rBytes, sizeof(rBytes));
+  uint8_t rBytes[L_BYTES];
   uint8_t msg;
+  RAND_bytes_no_fail((uint8_t *)rBytes, sizeof(rBytes)); // take random r in {0,1}^L
   RAND_bytes_no_fail(&msg, sizeof(msg));
-
+  msg &= 1;
   printf("Iterations of SHA: %d\n", NUM_ROUNDS);
 
   double begin = omp_get_wtime();
-  // randomness for commitments to secret input: Com(x,r) = SHA-256(x,r)
-  uint8_t rs[NUM_ROUNDS][3][4];    // NUM_ROUNDS rounds * 3 parties * 32bits
+  uint8_t rs[NUM_ROUNDS][3][4];    // randomness internal commitments for NIZKP: NUM_ROUNDS rounds * 3 parties * 32bits
   uint8_t keys[NUM_ROUNDS][3][16]; // NUM_ROUNDS rounds * 3 parties * 128bits
+  uint8_t keyH[16];                // key to generate universal hash function
   a as[NUM_ROUNDS]; // containes 32 bytes ouput for each view and the
                     // commitments to the views
   View localViews[NUM_ROUNDS][3];
 
   // Generating keys
   double beginCrypto = omp_get_wtime();
-  generate_keys_and_rs(keys, rs);
+  generate_keys_and_rs(keys, keyH, rs);
   update_clock(beginCrypto, &totalCrypto);
 
   // Sharing secrets
@@ -242,7 +241,7 @@ int main(void) {
   // Running HM commitment
   double beginHM = omp_get_wtime();
   UniversalHash h;
-  pick_universal_hash(h, msg, rBytes); // pick universal hash function
+  pick_universal_hash(&h, keyH, rBytes, msg); // pick universal hash function
   mpc_halevi_micali_prover(localViews, as, randomness, rs, h, rShares,
                            msgShares);
   update_clock(beginHM, &totalHM);
@@ -266,8 +265,8 @@ int main(void) {
   double beginZ = omp_get_wtime();
   z *zs = malloc(sizeof(z) * NUM_ROUNDS);
 
-// Generate proof
-#pragma omp parallel for
+  // Generate proof
+  #pragma omp parallel for
   for (int i = 0; i < NUM_ROUNDS; i++) {
     // create proof struct with view, key and randomness for parties es[i],
     // es[i]+1%3
@@ -278,7 +277,7 @@ int main(void) {
   // Writing to file
   double beginWrite = omp_get_wtime();
   char outputFile[3 * sizeof(int) + 8];
-  write_to_file(outputFile, as, zs, h);
+  write_to_file(outputFile, as, zs, keyH, h);
   update_clock(beginWrite, &inMilliWrite);
 
   free(zs);

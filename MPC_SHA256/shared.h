@@ -22,6 +22,9 @@ Description : Common functions for the SHA-256 prover and verifier
 
 static const int NUM_ROUNDS = 136;
 
+/* A 128 bit IV for randomness generation */
+static const unsigned char iv[17] = "0123456789012345";
+
 static const uint32_t hA[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
                                0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
 
@@ -38,9 +41,10 @@ static const uint32_t k[64] = {
     0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
     0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
 
-#define L_BITS 416 //TODO: make this 1024 after supporting multiple chunks in mpc_sha256
-#define L_BYTES L_BITS/8 
-#define L_WORDS L_BITS/32
+#define L_BITS                                                                 \
+  384 // TODO: make this 1024 after supporting multiple chunks in mpc_sha256
+#define L_BYTES L_BITS / 8
+#define L_WORDS L_BITS / 32
 
 #define ySize 736
 #define y2Size L_WORDS
@@ -52,17 +56,16 @@ typedef struct {
 
 // views
 typedef struct {
-  unsigned char x[L_BYTES]; // secret input share = SHA256 input chunk (padded and
-                       // pre-processed)
-  uint8_t msg;        // share of the committed message          
+  unsigned char x[L_BYTES]; // secret input share = SHA256 input
+  uint8_t msg;              // share of the committed message
   uint32_t y[ySize]; // output share (i.e., all the ADD/AND commits + the SHA256
                      // output)
 } View;
 
 // commitment
 typedef struct {
-  uint32_t yp[3][8];      // SHA256 output of each party
-  uint32_t y2p[3];  
+  uint32_t yp[3][8]; // SHA256 output of each party
+  uint32_t y2p[3];
   unsigned char h[3][32]; // SHA256 of each party's key and view with commitment
                           // randomnes k
 } a;
@@ -127,7 +130,7 @@ typedef struct {
 
 void handleErrors(void);
 
-EVP_CIPHER_CTX *setupAES(unsigned char key[16]);
+EVP_CIPHER_CTX *setupAES(const unsigned char key[16]);
 
 void getAllRandomness(unsigned char key[16], unsigned char randomness[2912]);
 void getAllRandomness2(unsigned char key[16], unsigned char *randomness,
@@ -174,7 +177,6 @@ inline void mpc_XOR(uint32_t x[3], uint32_t y[3], uint32_t z[3]) {
   z[1] = x[1] ^ y[1];
   z[2] = x[2] ^ y[2];
 }
-
 
 inline void mpc_XOR2(uint32_t x[2], uint32_t y[2], uint32_t z[2]) {
   z[0] = x[0] ^ y[0];

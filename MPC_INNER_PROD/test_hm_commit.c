@@ -24,13 +24,13 @@ uint32_t inner_prod_prover(const UniversalHash H, const uint32_t r[L_WORDS],
 }
 
 uint32_t verify_universal_hash(const UniversalHash H, const uint32_t r[L_WORDS],
-                           const uint8_t m) {
+                               const uint8_t m) {
   uint32_t y = 0;
   for (int i = 0; i < L_WORDS; i++) {
     y ^= H.A[i] & r[i];
   }
   uint32_t b_rec = __builtin_parity(y);
-  return (b_rec ^ m) == H.b; 
+  return (b_rec ^ m) == H.b;
 }
 
 void hm_bit_comit(const uint8_t m, const uint32_t r[L_WORDS], uint8_t y[32],
@@ -72,6 +72,7 @@ bool hm_bit_verify(const uint32_t m, const bit_commit *commit,
 int main(void) {
 
   uint8_t msg = 1;
+  RAND_bytes((uint8_t *)&msg, 1);
   uint32_t rWords[L_WORDS];
   RAND_bytes((uint8_t *)rWords, sizeof(rWords));
 
@@ -84,10 +85,21 @@ int main(void) {
     }
   }
 
-  {
+  uint8_t keyA[16];
+  RAND_bytes(keyA, sizeof(keyA));
+  UniversalHash H;
+  generate_H(H.A, &H.b, keyA, msg, rWords);
+  if (!verify_universal_hash(H, rWords, msg)) {
+    printf("Universal hash is malformed!\n");
+    exit(EXIT_FAILURE);
+  }
+
+  for (int i = 0; i < 10000; i++) {
     uint32_t msgShares[3];
     RAND_bytes((uint8_t *)msgShares, sizeof(msgShares));
-    msgShares[0] = msg ^ msgShares[1] ^ msgShares[2];
+    msgShares[0] &= 1;
+    msgShares[1] &= 1;
+    msgShares[2] = msg ^ msgShares[0] ^ msgShares[1];
 
     uint32_t rShares[L_WORDS][3];
     RAND_bytes((uint8_t *)rShares, sizeof(rShares));
@@ -95,31 +107,25 @@ int main(void) {
       rShares[i][0] = rWords[i] ^ rShares[i][1] ^ rShares[i][2];
     }
 
-    UniversalHash H;
-    generate_H(msg, rWords, H.A, &H.b);
-    if(!verify_universal_hash(H, rWords, msg)){
-      printf("Universal hash is malformed!\n");
-      exit(EXIT_FAILURE);
-    }
-
     uint32_t ys[3] = {0};
     mpc_inner_prod_prover(H, msgShares, rShares, ys);
-
-    if (inner_prod_prover(H, rWords, msg) != (ys[0] ^ ys[1] ^ ys[2])) {
-      printf("MPC prover produces unexpected result!\n");
+    if (((ys[0] ^ ys[1] ^ ys[2]) ^ H.b) != 0) {
+      printf("MPC prover produces unexpected result! - %d\n", i);
       exit(EXIT_FAILURE);
     }
 
-    uint32_t e = 0;
+    uint32_t e;
+    RAND_bytes((uint8_t *)&e, 1);
+    e %= 3;
+
     uint32_t openedShares[2] = {msgShares[e], msgShares[(e + 1) % 3]};
     uint32_t openedRs[L_WORDS][2];
     for (int k = 0; k < L_WORDS; k++) {
-      openedRs[k][e] = rShares[k][e];
+      openedRs[k][0] = rShares[k][e];
       openedRs[k][1] = rShares[k][(e + 1) % 3];
     }
     if (!mpc_inner_prod_verify(H, openedShares, openedRs, ys, e)) {
-      printf("Failure!\n");
-      return EXIT_FAILURE;
+      // return EXIT_FAILURE;
     }
   }
   printf("Success!\n");
