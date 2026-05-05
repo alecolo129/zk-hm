@@ -209,7 +209,7 @@ int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3], int numBits,
     return -1;
   }
 
-  int *randCount = calloc(1, sizeof(int));
+  int randCount = 1;
 
   int chars = numBits >> 3;
   unsigned char *chunks[3];
@@ -263,9 +263,9 @@ int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3], int numBits,
 
     // w[i][j] = w[i][j-16]+s0[i]+w[i][j-7]+s1[i];
 
-    mpc_ADD_impl(w[j - 16], s0, t1, randomness, randCount, views.y, countY);
-    mpc_ADD_impl(w[j - 7], t1, t1, randomness, randCount, views.y, countY);
-    mpc_ADD_impl(t1, s1, w[j], randomness, randCount, views.y, countY);
+    mpc_ADD_impl(w[j - 16], s0, t1, randomness, &randCount, views.y, countY);
+    mpc_ADD_impl(w[j - 7], t1, t1, randomness, &randCount, views.y, countY);
+    mpc_ADD_impl(t1, s1, w[j], randomness, &randCount, views.y, countY);
   }
 
   uint32_t a[3] = {hA[0], hA[0], hA[0]};
@@ -291,16 +291,16 @@ int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3], int numBits,
 
     // t0 = h + s1
 
-    mpc_ADD_impl(h, s1, t0, randomness, randCount, views.y, countY);
+    mpc_ADD_impl(h, s1, t0, randomness, &randCount, views.y, countY);
 
-    mpc_CH_impl(e, f, g, t1, randomness, randCount, views.y, countY);
+    mpc_CH_impl(e, f, g, t1, randomness, &randCount, views.y, countY);
 
     // t1 = t0 + t1 (h+s1+ch)
-    mpc_ADD_impl(t0, t1, t1, randomness, randCount, views.y, countY);
+    mpc_ADD_impl(t0, t1, t1, randomness, &randCount, views.y, countY);
 
-    mpc_ADDK_impl(t1, k[i], t1, randomness, randCount, views.y, countY);
+    mpc_ADDK_impl(t1, k[i], t1, randomness, &randCount, views.y, countY);
 
-    mpc_ADD_impl(t1, w[i], temp1, randomness, randCount, views.y, countY);
+    mpc_ADD_impl(t1, w[i], temp1, randomness, &randCount, views.y, countY);
 
     // s0 = RIGHTROTATE(a,2) ^ RIGHTROTATE(a,13) ^ RIGHTROTATE(a,22);
     mpc_RIGHTROTATE(a, 2, t0);
@@ -309,36 +309,36 @@ int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3], int numBits,
     mpc_RIGHTROTATE(a, 22, t1);
     mpc_XOR(t0, t1, s0);
 
-    mpc_MAJ_impl(a, b, c, maj, randomness, randCount, views.y, countY);
+    mpc_MAJ_impl(a, b, c, maj, randomness, &randCount, views.y, countY);
 
     // temp2 = s0+maj;
-    mpc_ADD_impl(s0, maj, temp2, randomness, randCount, views.y, countY);
+    mpc_ADD_impl(s0, maj, temp2, randomness, &randCount, views.y, countY);
 
     memcpy(h, g, sizeof(uint32_t) * 3);
     memcpy(g, f, sizeof(uint32_t) * 3);
     memcpy(f, e, sizeof(uint32_t) * 3);
     // e = d+temp1;
-    mpc_ADD_impl(d, temp1, e, randomness, randCount, views.y, countY);
+    mpc_ADD_impl(d, temp1, e, randomness, &randCount, views.y, countY);
     memcpy(d, c, sizeof(uint32_t) * 3);
     memcpy(c, b, sizeof(uint32_t) * 3);
     memcpy(b, a, sizeof(uint32_t) * 3);
     // a = temp1+temp2;
 
-    mpc_ADD_impl(temp1, temp2, a, randomness, randCount, views.y, countY);
+    mpc_ADD_impl(temp1, temp2, a, randomness, &randCount, views.y, countY);
   }
 
   uint32_t hHa[8][3] = {{hA[0], hA[0], hA[0]}, {hA[1], hA[1], hA[1]},
                         {hA[2], hA[2], hA[2]}, {hA[3], hA[3], hA[3]},
                         {hA[4], hA[4], hA[4]}, {hA[5], hA[5], hA[5]},
                         {hA[6], hA[6], hA[6]}, {hA[7], hA[7], hA[7]}};
-  mpc_ADD_impl(hHa[0], a, hHa[0], randomness, randCount, views.y, countY);
-  mpc_ADD_impl(hHa[1], b, hHa[1], randomness, randCount, views.y, countY);
-  mpc_ADD_impl(hHa[2], c, hHa[2], randomness, randCount, views.y, countY);
-  mpc_ADD_impl(hHa[3], d, hHa[3], randomness, randCount, views.y, countY);
-  mpc_ADD_impl(hHa[4], e, hHa[4], randomness, randCount, views.y, countY);
-  mpc_ADD_impl(hHa[5], f, hHa[5], randomness, randCount, views.y, countY);
-  mpc_ADD_impl(hHa[6], g, hHa[6], randomness, randCount, views.y, countY);
-  mpc_ADD_impl(hHa[7], h, hHa[7], randomness, randCount, views.y, countY);
+  mpc_ADD_impl(hHa[0], a, hHa[0], randomness, &randCount, views.y, countY);
+  mpc_ADD_impl(hHa[1], b, hHa[1], randomness, &randCount, views.y, countY);
+  mpc_ADD_impl(hHa[2], c, hHa[2], randomness, &randCount, views.y, countY);
+  mpc_ADD_impl(hHa[3], d, hHa[3], randomness, &randCount, views.y, countY);
+  mpc_ADD_impl(hHa[4], e, hHa[4], randomness, &randCount, views.y, countY);
+  mpc_ADD_impl(hHa[5], f, hHa[5], randomness, &randCount, views.y, countY);
+  mpc_ADD_impl(hHa[6], g, hHa[6], randomness, &randCount, views.y, countY);
+  mpc_ADD_impl(hHa[7], h, hHa[7], randomness, &randCount, views.y, countY);
 
   // produce the final hash value (big endian)
   // append each hHa[i] converting int into char
@@ -360,7 +360,6 @@ int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3], int numBits,
     results[1][i * 4 + 3] = hHa[i][1];
     results[2][i * 4 + 3] = hHa[i][2];
   }
-  free(randCount);
 
   return 0;
 }
