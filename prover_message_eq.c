@@ -25,9 +25,7 @@ void init() {
   openmp_thread_setup();
 }
 
-void cleanup() {
-  openmp_thread_cleanup();
-}
+void cleanup() { openmp_thread_cleanup(); }
 
 inline void update_clock(clock_t beginClock, int *clockToUpdate) {
   clock_t deltaT = clock() - beginClock;
@@ -73,17 +71,16 @@ void generate_keys_and_rs(unsigned char keys[NUM_ROUNDS][3][16],
   RAND_bytes_no_fail((unsigned char *)rs, NUM_ROUNDS * 3 * 4);
 }
 
-void share_secret(int userInputLen,
-                  unsigned char shares[NUM_ROUNDS][3][userInputLen],
-                  const unsigned char input[userInputLen]) {
-  if (RAND_bytes((unsigned char *)shares, NUM_ROUNDS * 3 * userInputLen) != 1) {
+void share_secret(unsigned char shares[NUM_ROUNDS][3][L_BYTES],
+                  const unsigned char input[L_BYTES]) {
+  if (RAND_bytes((unsigned char *)shares, NUM_ROUNDS * 3 * L_BYTES) != 1) {
     printf("RAND_bytes failed crypto, aborting\n");
     exit(1);
   }
 #pragma omp parallel for
   for (int k = 0; k < NUM_ROUNDS; k++) {
 
-    for (int j = 0; j < userInputLen; j++) {
+    for (int j = 0; j < L_BYTES; j++) {
       shares[k][2][j] =
           input[j] ^ shares[k][0][j] ^
           shares[k][1][j]; // for each round, set share party_2 to input ^ share
@@ -92,14 +89,13 @@ void share_secret(int userInputLen,
   }
 }
 
-void mpc_sha256_prover(int userInputLen,
-                       unsigned char shares[NUM_ROUNDS][3][userInputLen],
+void mpc_sha256_prover(unsigned char shares[NUM_ROUNDS][3][L_BYTES],
                        unsigned char *randomness[NUM_ROUNDS][3],
                        View2 localViews[NUM_ROUNDS][3], a2 as[NUM_ROUNDS]) {
 
 #pragma omp parallel for
   for (int k = 0; k < NUM_ROUNDS; k++) {
-    commit2(userInputLen, shares[k], randomness[k], localViews[k]);
+    commit2(shares[k], randomness[k], localViews[k]);
     output2(localViews[k], &as[k]);
 
     for (int j = 0; j < 3; j++) {
@@ -148,12 +144,11 @@ void write_to_file(a2 as[NUM_ROUNDS], z2 *zs,
 
   fclose(file);
 }
-
+// TODO: This file is outdated
 int main(void) {
   init();
 
-  int userInputLen = 1;
-  unsigned char input[userInputLen];
+  unsigned char input[L_BYTES];
 
   printf("Committing to byte: %02x\n", input[0]);
   printf("Iterations of SHA: %d\n", NUM_ROUNDS);
@@ -173,8 +168,8 @@ int main(void) {
   // Sharing secrets
   clock_t beginSS = clock();
   unsigned char shares[NUM_ROUNDS][3]
-                      [userInputLen]; // 3 shares of len(user_input) bytes
-  share_secret(userInputLen, shares, input);
+                      [L_BYTES]; // 3 shares of len(user_input) bytes
+  share_secret(shares, input);
   update_clock(beginSS, &totalSS);
 
   unsigned char
@@ -188,7 +183,7 @@ int main(void) {
   // Running MPC-SHA2
   a2 as[NUM_ROUNDS];
   clock_t beginSha = clock();
-  mpc_sha256_prover(userInputLen, shares, randomness, localViews, as);
+  mpc_sha256_prover(shares, randomness, localViews, as);
   update_clock(beginSha, &totalSha);
 
   // Committing

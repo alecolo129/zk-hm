@@ -13,11 +13,11 @@ void generate_randomness(unsigned int numRounds,
 int secretShare(unsigned char *input, int numBytes,
                 unsigned char output[3][numBytes]);
 
-void commit(int numBytes, unsigned char shares[3][numBytes],
+void commit(unsigned char shares[3][L_BYTES],
             unsigned char *randomness[3], unsigned char rs[3][4],
             View views[3]);
 
-void commit2(int numBytes, unsigned char shares[3][numBytes],
+void commit2(unsigned char shares[3][L_BYTES],
              unsigned char *randomness[3], View2 views[3]);
 
 z prove(int e, unsigned char keys[3][16], unsigned char rs[3][4],

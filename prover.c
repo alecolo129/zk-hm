@@ -121,7 +121,7 @@ void mpc_halevi_micali_prover(View localViews[NUM_ROUNDS][3], a as[NUM_ROUNDS],
   for (int k = 0; k < NUM_ROUNDS; k++) {
 
     // prove y = SHA256(r)
-    commit(L_BYTES, rShares[k], randomness[k], rs[k], localViews[k]);
+    commit(rShares[k], randomness[k], rs[k], localViews[k]);
 
     // copy last part of the view.y (i.e., SHA256 output) into a.yp
     output(localViews[k][0], as[k].yp[0]);

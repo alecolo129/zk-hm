@@ -35,7 +35,7 @@ void mpc_CH_impl(uint32_t e[], uint32_t f[3], uint32_t g[3], uint32_t z[3],
                  unsigned char *randomness[3], int *randCount,
                  uint32_t *y_views[3], int *countY);
 
-int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3], int numBits,
+int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3],
                unsigned char *randomness[3], ViewsPtr views, int *countY);
 
 uint32_t rand32() {
@@ -201,11 +201,10 @@ void mpc_CH_impl(uint32_t e[], uint32_t f[3], uint32_t g[3], uint32_t z[3],
   mpc_XOR(t0, g, z);
 }
 
-int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3], int numBits,
+int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3],
                unsigned char *randomness[3], ViewsPtr views, int *countY) {
 
   int randCount = 0;
-  int numBytes = numBits >> 3;
 
   const size_t paddedLen = NUM_SHA256_BLOCKS * 64;
   unsigned char *padded[3];
@@ -213,16 +212,16 @@ int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3], int numBits,
   for (int i = 0; i < 3; i++) {
     padded[i] = calloc(paddedLen, 1);
     memcpy(padded[i], inputs[i],
-           numBytes); // copy original share[i] in respective chunk[i]
+           L_BYTES); // copy original share[i] in respective chunk[i]
     memcpy(views.x[i], inputs[i],
-           numBytes); // set each party's SHA-256 input as it's secret share x
+           L_BYTES); // set each party's SHA-256 input as it's secret share x
 
     // append 1
-    padded[i][numBytes] = 0x80;
+    padded[i][L_BYTES] = 0x80;
 
     // Last 8 chars used for storing length of input without padding, in
     // big-endian.
-    store_u64_be(&padded[i][paddedLen - 8], numBits);
+    store_u64_be(&padded[i][paddedLen - 8], L_BITS);
   }
 
   uint32_t H[8][3] = {{hA[0], hA[0], hA[0]}, {hA[1], hA[1], hA[1]},
@@ -236,7 +235,7 @@ int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3], int numBits,
     for (int i = 0; i < 3; i++) {
       const unsigned char *chunk = padded[i] + (blk * 64);
       for (int j = 0; j < 16; j++) {
-        load_u32_be(&w[j][i], &chunk[j*4]);
+        load_u32_be(&w[j][i], &chunk[j * 4]);
       }
     }
 
@@ -408,14 +407,15 @@ void generate_randomness(unsigned int numRounds,
       // Note: In the MPC protocol we need 32 bit of randomness for each ADD/AND
       // operation in SHA256 (operates on 32bit words). We have 64 AND gates and
       // 664 ADD gates, so we need 728 * 32 / 8 = 2912 bytes of randomness.
-      randomness[k][j] = malloc(NUM_SHA256_BLOCKS * 2912 * sizeof(unsigned char));
+      randomness[k][j] =
+          malloc(NUM_SHA256_BLOCKS * 2912 * sizeof(unsigned char));
       getAllRandomness(keys[k][j], randomness[k][j]);
     }
   }
 }
 
-void commit_impl(int numBytes, unsigned char shares[3][numBytes],
-                 unsigned char *randomness[3], ViewsPtr views) {
+void commit_impl(unsigned char shares[3][L_BYTES], unsigned char *randomness[3],
+                 ViewsPtr views) {
 
   unsigned char *inputs[3];
   inputs[0] = shares[0];
@@ -427,7 +427,7 @@ void commit_impl(int numBytes, unsigned char shares[3][numBytes],
   hashes[2] = malloc(32);
 
   int countY = 0;
-  mpc_sha256(hashes, inputs, numBytes * 8, randomness, views, &countY);
+  mpc_sha256(hashes, inputs, randomness, views, &countY);
 
   // Explicitly add y to view
   for (int i = 0; i < 8; i++) {
@@ -448,9 +448,8 @@ void commit_impl(int numBytes, unsigned char shares[3][numBytes],
   free(hashes[2]);
 }
 
-void commit(int numBytes, unsigned char shares[3][numBytes],
-            unsigned char *randomness[3], unsigned char rs[3][4],
-            View views[3]) {
+void commit(unsigned char shares[3][L_BYTES], unsigned char *randomness[3],
+            unsigned char rs[3][4], View views[3]) {
 
   ViewsPtr views_ptr;
   for (int j = 0; j < 3; j++) {
@@ -458,11 +457,11 @@ void commit(int numBytes, unsigned char shares[3][numBytes],
     views_ptr.y[j] = views[j].y;
   }
 
-  commit_impl(numBytes, shares, randomness, views_ptr);
+  commit_impl(shares, randomness, views_ptr);
 }
 
-void commit2(int numBytes, unsigned char shares[3][numBytes],
-             unsigned char *randomness[3], View2 views[3]) {
+void commit2(unsigned char shares[3][L_BYTES], unsigned char *randomness[3],
+             View2 views[3]) {
 
   ViewsPtr views_ptr;
   for (int j = 0; j < 3; j++) {
@@ -470,11 +469,11 @@ void commit2(int numBytes, unsigned char shares[3][numBytes],
     views_ptr.y[j] = views[j].y[0];
   }
 
-  commit_impl(numBytes, shares, randomness, views_ptr);
+  commit_impl(shares, randomness, views_ptr);
   for (int j = 0; j < 3; j++) {
     views_ptr.y[j] = views[j].y[1];
   }
-  commit_impl(numBytes, shares, randomness, views_ptr);
+  commit_impl(shares, randomness, views_ptr);
 }
 
 z prove(int e, unsigned char keys[3][16], unsigned char rs[3][4],
