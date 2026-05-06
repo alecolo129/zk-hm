@@ -41,13 +41,17 @@ static const uint32_t k[64] = {
     0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
     0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
 
-#define L_BITS                                                                 \
-  384 // TODO: make this 1024 after supporting multiple chunks in mpc_sha256
+#define L_BITS 1024u
 #define L_BYTES L_BITS / 8
 #define L_WORDS L_BITS / 32
 
-#define ySize 736
-#define y2Size L_WORDS
+#define NUM_SHA256_BLOCKS                                                      \
+  ((L_BITS + 1 + 64 + 511) / 512) // ceil((L + 1 + 54) / 512)
+
+#define RAND_BYTES                                                             \
+  2912 * NUM_SHA256_BLOCKS // we need 2912 bytes of randomness per round
+
+#define ySize NUM_SHA256_BLOCKS * 728 + 8
 
 typedef struct {
   uint32_t A[L_WORDS];
@@ -84,6 +88,9 @@ typedef struct {
 
 // ---- pre-image equality => prove m : c1 = SHA256(m,r) & c2 = SHA256(m, r')
 // for some randomness r,r'
+// TODO: This part needs to be updated
+
+#define y2Size L_WORDS // TODO: this is outdated
 
 // views
 typedef struct {
@@ -132,11 +139,12 @@ void handleErrors(void);
 
 EVP_CIPHER_CTX *setupAES(const unsigned char key[16]);
 
-void getAllRandomness(unsigned char key[16], unsigned char randomness[2912]);
+void getAllRandomness(unsigned char key[16],
+                      unsigned char randomness[RAND_BYTES]);
 void getAllRandomness2(unsigned char key[16], unsigned char *randomness,
                        int randSize);
 
-uint32_t getRandom32(unsigned char randomness[2912], int randCount);
+uint32_t getRandom32(unsigned char randomness[RAND_BYTES], int randCount);
 
 void init_EVP();
 
@@ -152,6 +160,24 @@ void H2(unsigned char k[16], View2 v, unsigned char r[4],
 
 void H3(uint32_t y[8], a *as, int s, const UniversalHash h, int *es);
 void H3_2(uint32_t y[8], a2 *as, int s, int *es);
+
+/* Helper: write 64-bit big-endian */
+inline void store_u64_be(unsigned char *dst, uint64_t x) {
+  dst[0] = (unsigned char)(x >> 56);
+  dst[1] = (unsigned char)(x >> 48);
+  dst[2] = (unsigned char)(x >> 40);
+  dst[3] = (unsigned char)(x >> 32);
+  dst[4] = (unsigned char)(x >> 24);
+  dst[5] = (unsigned char)(x >> 16);
+  dst[6] = (unsigned char)(x >> 8);
+  dst[7] = (unsigned char)(x);
+}
+
+/* Helper: write 32-bit big-endian */
+inline void load_u32_be(uint32_t *dst, const unsigned char *src) {
+  *dst = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
+         ((uint32_t)src[2] << 8) | (uint32_t)src[3];
+}
 
 inline void output2(View2 v[3], a2 *a) {
   for (int c = 0; c < 2; c++) {

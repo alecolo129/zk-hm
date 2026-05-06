@@ -203,162 +203,170 @@ void mpc_CH_impl(uint32_t e[], uint32_t f[3], uint32_t g[3], uint32_t z[3],
 
 int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3], int numBits,
                unsigned char *randomness[3], ViewsPtr views, int *countY) {
-  // N:B: would need to have more than one chunk
-  if (numBits > 447) {
-    printf("Input too long, aborting!");
-    return -1;
-  }
 
-  int randCount = 1;
+  int randCount = 0;
+  int numBytes = numBits >> 3;
 
-  int chars = numBits >> 3;
-  unsigned char *chunks[3];
-  uint32_t w[64][3];
-
+  const size_t paddedLen = NUM_SHA256_BLOCKS * 64;
+  unsigned char *padded[3];
   // Pre-processing (padding)
   for (int i = 0; i < 3; i++) {
-    chunks[i] = calloc(64, 1); // 512 bits
-    memcpy(chunks[i], inputs[i],
-           chars);           // copy original share[i] in respective chunk[i]
+    padded[i] = calloc(paddedLen, 1);
+    memcpy(padded[i], inputs[i],
+           numBytes); // copy original share[i] in respective chunk[i]
     memcpy(views.x[i], inputs[i],
-           chars); // set each party's SHA-256 input as it's secret share x
+           numBytes); // set each party's SHA-256 input as it's secret share x
 
-    chunks[i][chars] = 0x80; // append 1
+    // append 1
+    padded[i][numBytes] = 0x80;
+
     // Last 8 chars used for storing length of input without padding, in
-    // big-endian. Since we only care for one block, we are safe with just using
-    // last 9 bits and 0'ing the rest
+    // big-endian.
+    store_u64_be(&padded[i][paddedLen - 8], numBits);
+  }
 
-    // chunk[60] = numBits >> 24;
-    // chunk[61] = numBits >> 16;
-    chunks[i][62] = numBits >> 8;
-    chunks[i][63] = numBits;
+  uint32_t H[8][3] = {{hA[0], hA[0], hA[0]}, {hA[1], hA[1], hA[1]},
+                      {hA[2], hA[2], hA[2]}, {hA[3], hA[3], hA[3]},
+                      {hA[4], hA[4], hA[4]}, {hA[5], hA[5], hA[5]},
+                      {hA[6], hA[6], hA[6]}, {hA[7], hA[7], hA[7]}};
 
-    for (int j = 0; j < 16; j++) {
-      w[j][i] = (chunks[i][j * 4] << 24) | (chunks[i][j * 4 + 1] << 16) |
-                (chunks[i][j * 4 + 2] << 8) | chunks[i][j * 4 + 3];
+  for (int blk = 0; blk < NUM_SHA256_BLOCKS; blk++) {
+
+    uint32_t w[64][3];
+    for (int i = 0; i < 3; i++) {
+      const unsigned char *chunk = padded[i] + (blk * 64);
+      for (int j = 0; j < 16; j++) {
+        load_u32_be(&w[j][i], &chunk[j*4]);
+      }
     }
-    free(chunks[i]);
+
+    uint32_t s0[3], s1[3];
+    uint32_t t0[3], t1[3];
+    for (int j = 16; j < 64; j++) {
+      // s0[i] = RIGHTROTATE(w[i][j-15],7) ^ RIGHTROTATE(w[i][j-15],18) ^
+      // (w[i][j-15] >> 3);
+      mpc_RIGHTROTATE(w[j - 15], 7, t0);
+
+      mpc_RIGHTROTATE(w[j - 15], 18, t1);
+      mpc_XOR(t0, t1, t0);
+      mpc_RIGHTSHIFT(w[j - 15], 3, t1);
+      mpc_XOR(t0, t1, s0);
+
+      // s1[i] = RIGHTROTATE(w[i][j-2],17) ^ RIGHTROTATE(w[i][j-2],19) ^
+      // (w[i][j-2] >> 10);
+      mpc_RIGHTROTATE(w[j - 2], 17, t0);
+      mpc_RIGHTROTATE(w[j - 2], 19, t1);
+
+      mpc_XOR(t0, t1, t0);
+      mpc_RIGHTSHIFT(w[j - 2], 10, t1);
+      mpc_XOR(t0, t1, s1);
+
+      // w[i][j] = w[i][j-16]+s0[i]+w[i][j-7]+s1[i];
+
+      mpc_ADD_impl(w[j - 16], s0, t1, randomness, &randCount, views.y, countY);
+      mpc_ADD_impl(w[j - 7], t1, t1, randomness, &randCount, views.y, countY);
+      mpc_ADD_impl(t1, s1, w[j], randomness, &randCount, views.y, countY);
+    }
+
+    // Initialize working variables with current hash state
+    uint32_t a[3], b[3], c[3], d[3], e[3], f[3], g[3], h[3];
+    memcpy(a, H[0], sizeof(a));
+    memcpy(b, H[1], sizeof(b));
+    memcpy(c, H[2], sizeof(c));
+    memcpy(d, H[3], sizeof(d));
+    memcpy(e, H[4], sizeof(e));
+    memcpy(f, H[5], sizeof(f));
+    memcpy(g, H[6], sizeof(g));
+    memcpy(h, H[7], sizeof(h));
+
+    uint32_t temp1[3], temp2[3], maj[3];
+
+    for (int i = 0; i < 64; i++) {
+      // s1 = RIGHTROTATE(e,6) ^ RIGHTROTATE(e,11) ^ RIGHTROTATE(e,25);
+      mpc_RIGHTROTATE(e, 6, t0);
+      mpc_RIGHTROTATE(e, 11, t1);
+      mpc_XOR(t0, t1, t0);
+
+      mpc_RIGHTROTATE(e, 25, t1);
+      mpc_XOR(t0, t1, s1);
+
+      // ch = (e & f) ^ ((~e) & g);
+      // temp1 = h + s1 + CH(e,f,g) + k[i]+w[i];
+
+      // t0 = h + s1
+
+      mpc_ADD_impl(h, s1, t0, randomness, &randCount, views.y, countY);
+
+      mpc_CH_impl(e, f, g, t1, randomness, &randCount, views.y, countY);
+
+      // t1 = t0 + t1 (h+s1+ch)
+      mpc_ADD_impl(t0, t1, t1, randomness, &randCount, views.y, countY);
+
+      mpc_ADDK_impl(t1, k[i], t1, randomness, &randCount, views.y, countY);
+
+      mpc_ADD_impl(t1, w[i], temp1, randomness, &randCount, views.y, countY);
+
+      // s0 = RIGHTROTATE(a,2) ^ RIGHTROTATE(a,13) ^ RIGHTROTATE(a,22);
+      mpc_RIGHTROTATE(a, 2, t0);
+      mpc_RIGHTROTATE(a, 13, t1);
+      mpc_XOR(t0, t1, t0);
+      mpc_RIGHTROTATE(a, 22, t1);
+      mpc_XOR(t0, t1, s0);
+
+      mpc_MAJ_impl(a, b, c, maj, randomness, &randCount, views.y, countY);
+
+      // temp2 = s0+maj;
+      mpc_ADD_impl(s0, maj, temp2, randomness, &randCount, views.y, countY);
+
+      memcpy(h, g, sizeof(h));
+      memcpy(g, f, sizeof(g));
+      memcpy(f, e, sizeof(f));
+      // e = d+temp1;
+      mpc_ADD_impl(d, temp1, e, randomness, &randCount, views.y, countY);
+      memcpy(d, c, sizeof(d));
+      memcpy(c, b, sizeof(c));
+      memcpy(b, a, sizeof(b));
+      // a = temp1+temp2;
+
+      mpc_ADD_impl(temp1, temp2, a, randomness, &randCount, views.y, countY);
+    }
+
+    mpc_ADD_impl(H[0], a, H[0], randomness, &randCount, views.y, countY);
+    mpc_ADD_impl(H[1], b, H[1], randomness, &randCount, views.y, countY);
+    mpc_ADD_impl(H[2], c, H[2], randomness, &randCount, views.y, countY);
+    mpc_ADD_impl(H[3], d, H[3], randomness, &randCount, views.y, countY);
+    mpc_ADD_impl(H[4], e, H[4], randomness, &randCount, views.y, countY);
+    mpc_ADD_impl(H[5], f, H[5], randomness, &randCount, views.y, countY);
+    mpc_ADD_impl(H[6], g, H[6], randomness, &randCount, views.y, countY);
+    mpc_ADD_impl(H[7], h, H[7], randomness, &randCount, views.y, countY);
   }
 
-  uint32_t s0[3], s1[3];
-  uint32_t t0[3], t1[3];
-  for (int j = 16; j < 64; j++) {
-    // s0[i] = RIGHTROTATE(w[i][j-15],7) ^ RIGHTROTATE(w[i][j-15],18) ^
-    // (w[i][j-15] >> 3);
-    mpc_RIGHTROTATE(w[j - 15], 7, t0);
-
-    mpc_RIGHTROTATE(w[j - 15], 18, t1);
-    mpc_XOR(t0, t1, t0);
-    mpc_RIGHTSHIFT(w[j - 15], 3, t1);
-    mpc_XOR(t0, t1, s0);
-
-    // s1[i] = RIGHTROTATE(w[i][j-2],17) ^ RIGHTROTATE(w[i][j-2],19) ^
-    // (w[i][j-2] >> 10);
-    mpc_RIGHTROTATE(w[j - 2], 17, t0);
-    mpc_RIGHTROTATE(w[j - 2], 19, t1);
-
-    mpc_XOR(t0, t1, t0);
-    mpc_RIGHTSHIFT(w[j - 2], 10, t1);
-    mpc_XOR(t0, t1, s1);
-
-    // w[i][j] = w[i][j-16]+s0[i]+w[i][j-7]+s1[i];
-
-    mpc_ADD_impl(w[j - 16], s0, t1, randomness, &randCount, views.y, countY);
-    mpc_ADD_impl(w[j - 7], t1, t1, randomness, &randCount, views.y, countY);
-    mpc_ADD_impl(t1, s1, w[j], randomness, &randCount, views.y, countY);
+  // Free padded shares
+  for (int i = 0; i < 3; i++) {
+    free(padded[i]);
   }
 
-  uint32_t a[3] = {hA[0], hA[0], hA[0]};
-  uint32_t b[3] = {hA[1], hA[1], hA[1]};
-  uint32_t c[3] = {hA[2], hA[2], hA[2]};
-  uint32_t d[3] = {hA[3], hA[3], hA[3]};
-  uint32_t e[3] = {hA[4], hA[4], hA[4]};
-  uint32_t f[3] = {hA[5], hA[5], hA[5]};
-  uint32_t g[3] = {hA[6], hA[6], hA[6]};
-  uint32_t h[3] = {hA[7], hA[7], hA[7]};
-  uint32_t temp1[3], temp2[3], maj[3];
-  for (int i = 0; i < 64; i++) {
-    // s1 = RIGHTROTATE(e,6) ^ RIGHTROTATE(e,11) ^ RIGHTROTATE(e,25);
-    mpc_RIGHTROTATE(e, 6, t0);
-    mpc_RIGHTROTATE(e, 11, t1);
-    mpc_XOR(t0, t1, t0);
-
-    mpc_RIGHTROTATE(e, 25, t1);
-    mpc_XOR(t0, t1, s1);
-
-    // ch = (e & f) ^ ((~e) & g);
-    // temp1 = h + s1 + CH(e,f,g) + k[i]+w[i];
-
-    // t0 = h + s1
-
-    mpc_ADD_impl(h, s1, t0, randomness, &randCount, views.y, countY);
-
-    mpc_CH_impl(e, f, g, t1, randomness, &randCount, views.y, countY);
-
-    // t1 = t0 + t1 (h+s1+ch)
-    mpc_ADD_impl(t0, t1, t1, randomness, &randCount, views.y, countY);
-
-    mpc_ADDK_impl(t1, k[i], t1, randomness, &randCount, views.y, countY);
-
-    mpc_ADD_impl(t1, w[i], temp1, randomness, &randCount, views.y, countY);
-
-    // s0 = RIGHTROTATE(a,2) ^ RIGHTROTATE(a,13) ^ RIGHTROTATE(a,22);
-    mpc_RIGHTROTATE(a, 2, t0);
-    mpc_RIGHTROTATE(a, 13, t1);
-    mpc_XOR(t0, t1, t0);
-    mpc_RIGHTROTATE(a, 22, t1);
-    mpc_XOR(t0, t1, s0);
-
-    mpc_MAJ_impl(a, b, c, maj, randomness, &randCount, views.y, countY);
-
-    // temp2 = s0+maj;
-    mpc_ADD_impl(s0, maj, temp2, randomness, &randCount, views.y, countY);
-
-    memcpy(h, g, sizeof(uint32_t) * 3);
-    memcpy(g, f, sizeof(uint32_t) * 3);
-    memcpy(f, e, sizeof(uint32_t) * 3);
-    // e = d+temp1;
-    mpc_ADD_impl(d, temp1, e, randomness, &randCount, views.y, countY);
-    memcpy(d, c, sizeof(uint32_t) * 3);
-    memcpy(c, b, sizeof(uint32_t) * 3);
-    memcpy(b, a, sizeof(uint32_t) * 3);
-    // a = temp1+temp2;
-
-    mpc_ADD_impl(temp1, temp2, a, randomness, &randCount, views.y, countY);
-  }
-
-  uint32_t hHa[8][3] = {{hA[0], hA[0], hA[0]}, {hA[1], hA[1], hA[1]},
-                        {hA[2], hA[2], hA[2]}, {hA[3], hA[3], hA[3]},
-                        {hA[4], hA[4], hA[4]}, {hA[5], hA[5], hA[5]},
-                        {hA[6], hA[6], hA[6]}, {hA[7], hA[7], hA[7]}};
-  mpc_ADD_impl(hHa[0], a, hHa[0], randomness, &randCount, views.y, countY);
-  mpc_ADD_impl(hHa[1], b, hHa[1], randomness, &randCount, views.y, countY);
-  mpc_ADD_impl(hHa[2], c, hHa[2], randomness, &randCount, views.y, countY);
-  mpc_ADD_impl(hHa[3], d, hHa[3], randomness, &randCount, views.y, countY);
-  mpc_ADD_impl(hHa[4], e, hHa[4], randomness, &randCount, views.y, countY);
-  mpc_ADD_impl(hHa[5], f, hHa[5], randomness, &randCount, views.y, countY);
-  mpc_ADD_impl(hHa[6], g, hHa[6], randomness, &randCount, views.y, countY);
-  mpc_ADD_impl(hHa[7], h, hHa[7], randomness, &randCount, views.y, countY);
+  uint32_t t0[3];
 
   // produce the final hash value (big endian)
   // append each hHa[i] converting int into char
   for (int i = 0; i < 8; i++) {
-    mpc_RIGHTSHIFT(hHa[i], 24, t0);
+    mpc_RIGHTSHIFT(H[i], 24, t0);
     results[0][i * 4] = t0[0];
     results[1][i * 4] = t0[1];
     results[2][i * 4] = t0[2];
-    mpc_RIGHTSHIFT(hHa[i], 16, t0);
+    mpc_RIGHTSHIFT(H[i], 16, t0);
     results[0][i * 4 + 1] = t0[0];
     results[1][i * 4 + 1] = t0[1];
     results[2][i * 4 + 1] = t0[2];
-    mpc_RIGHTSHIFT(hHa[i], 8, t0);
+    mpc_RIGHTSHIFT(H[i], 8, t0);
     results[0][i * 4 + 2] = t0[0];
     results[1][i * 4 + 2] = t0[1];
     results[2][i * 4 + 2] = t0[2];
 
-    results[0][i * 4 + 3] = hHa[i][0];
-    results[1][i * 4 + 3] = hHa[i][1];
-    results[2][i * 4 + 3] = hHa[i][2];
+    results[0][i * 4 + 3] = H[i][0];
+    results[1][i * 4 + 3] = H[i][1];
+    results[2][i * 4 + 3] = H[i][2];
   }
 
   return 0;
@@ -400,7 +408,7 @@ void generate_randomness(unsigned int numRounds,
       // Note: In the MPC protocol we need 32 bit of randomness for each ADD/AND
       // operation in SHA256 (operates on 32bit words). We have 64 AND gates and
       // 664 ADD gates, so we need 728 * 32 / 8 = 2912 bytes of randomness.
-      randomness[k][j] = malloc(2912 * sizeof(unsigned char));
+      randomness[k][j] = malloc(NUM_SHA256_BLOCKS * 2912 * sizeof(unsigned char));
       getAllRandomness(keys[k][j], randomness[k][j]);
     }
   }
