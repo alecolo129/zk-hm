@@ -1,5 +1,5 @@
 build/*
 test/*
 *.bin
-*.txt
+plan.txt
 .vscode/*

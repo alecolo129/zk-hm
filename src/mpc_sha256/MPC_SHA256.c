@@ -8,32 +8,13 @@
  */
 
 #include "MPC_SHA256.h"
+#include "MPC_arithmetic.h"
 #include "shared.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-void mpc_AND_impl(uint32_t x[3], uint32_t y[3], uint32_t z[3],
-                  unsigned char *randomness[3], int *randCount,
-                  uint32_t *y_views[3], int *countY);
-
-void mpc_ADD_impl(uint32_t x[3], uint32_t y[3], uint32_t z[3],
-                  unsigned char *randomness[3], int *randCount,
-                  uint32_t *y_views[3], int *countY);
-
-void mpc_ADDK_impl(uint32_t x[3], uint32_t y, uint32_t z[3],
-                   unsigned char *randomness[3], int *randCount,
-                   uint32_t *y_views[3], int *countY);
-
-void mpc_MAJ_impl(uint32_t a[], uint32_t b[3], uint32_t c[3], uint32_t z[3],
-                  unsigned char *randomness[3], int *randCount,
-                  uint32_t *y_views[3], int *countY);
-
-void mpc_CH_impl(uint32_t e[], uint32_t f[3], uint32_t g[3], uint32_t z[3],
-                 unsigned char *randomness[3], int *randCount,
-                 uint32_t *y_views[3], int *countY);
 
 int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3],
                unsigned char *randomness[3], ViewsPtr views, int *countY);
@@ -53,152 +34,6 @@ void printbits(uint32_t n) {
     printbits(n >> 1);
     printf("%d", n & 1);
   }
-}
-
-void mpc_AND(uint32_t x[3], uint32_t y[3], uint32_t z[3],
-             unsigned char *randomness[3], int *randCount, View views[3],
-             int *countY) {
-  uint32_t *y_views[3] = {views[0].y, views[1].y, views[2].y};
-  mpc_AND_impl(x, y, z, randomness, randCount, y_views, countY);
-}
-
-void mpc_AND_impl(uint32_t x[3], uint32_t y[3], uint32_t z[3],
-                  unsigned char *randomness[3], int *randCount,
-                  uint32_t *y_views[3], int *countY) {
-  uint32_t r[3] = {getRandom32(randomness[0], *randCount),
-                   getRandom32(randomness[1], *randCount),
-                   getRandom32(randomness[2], *randCount)};
-  *randCount += 4;
-  uint32_t t[3] = {0};
-
-  t[0] = (x[0] & y[1]) ^ (x[1] & y[0]) ^ (x[0] & y[0]) ^ r[0] ^ r[1];
-  t[1] = (x[1] & y[2]) ^ (x[2] & y[1]) ^ (x[1] & y[1]) ^ r[1] ^ r[2];
-  t[2] = (x[2] & y[0]) ^ (x[0] & y[2]) ^ (x[2] & y[2]) ^ r[2] ^ r[0];
-  z[0] = t[0];
-  z[1] = t[1];
-  z[2] = t[2];
-  y_views[0][*countY] = z[0];
-  y_views[1][*countY] = z[1];
-  y_views[2][*countY] = z[2];
-  (*countY)++;
-}
-
-void mpc_NEGATE(uint32_t x[3], uint32_t z[3]) {
-  z[0] = ~x[0];
-  z[1] = ~x[1];
-  z[2] = ~x[2];
-}
-
-void mpc_ADD(uint32_t x[3], uint32_t y[3], uint32_t z[3],
-             unsigned char *randomness[3], int *randCount, View views[3],
-             int *countY) {
-  uint32_t *y_views[3] = {views[0].y, views[1].y, views[2].y};
-  mpc_ADD_impl(x, y, z, randomness, randCount, y_views, countY);
-}
-
-void mpc_ADDK(uint32_t x[3], uint32_t y, uint32_t z[3],
-              unsigned char *randomness[3], int *randCount, View views[3],
-              int *countY) {
-  uint32_t *y_views[3] = {views[0].y, views[1].y, views[2].y};
-  mpc_ADDK_impl(x, y, z, randomness, randCount, y_views, countY);
-}
-
-void mpc_ADDK_impl(uint32_t x[3], uint32_t y, uint32_t z[3],
-                   unsigned char *randomness[3], int *randCount,
-                   uint32_t *y_views[3], int *countY) {
-  uint32_t ys[3] = {y, y, y};
-  mpc_ADD_impl(x, ys, z, randomness, randCount, y_views, countY);
-}
-
-void mpc_ADD_impl(uint32_t x[3], uint32_t y[3], uint32_t z[3],
-                  unsigned char *randomness[3], int *randCount,
-                  uint32_t *y_views[3], int *countY) {
-  uint32_t c[3] = {0};
-  uint32_t r[3] = {getRandom32(randomness[0], *randCount),
-                   getRandom32(randomness[1], *randCount),
-                   getRandom32(randomness[2], *randCount)};
-  *randCount += 4;
-
-  uint8_t a[3], b[3];
-
-  uint8_t t;
-
-  for (int i = 0; i < 31; i++) {
-    a[0] = GETBIT(x[0] ^ c[0], i);
-    a[1] = GETBIT(x[1] ^ c[1], i);
-    a[2] = GETBIT(x[2] ^ c[2], i);
-
-    b[0] = GETBIT(y[0] ^ c[0], i);
-    b[1] = GETBIT(y[1] ^ c[1], i);
-    b[2] = GETBIT(y[2] ^ c[2], i);
-
-    t = (a[0] & b[1]) ^ (a[1] & b[0]) ^ GETBIT(r[1], i);
-    SETBIT(c[0], i + 1, t ^ (a[0] & b[0]) ^ GETBIT(c[0], i) ^ GETBIT(r[0], i));
-
-    t = (a[1] & b[2]) ^ (a[2] & b[1]) ^ GETBIT(r[2], i);
-    SETBIT(c[1], i + 1, t ^ (a[1] & b[1]) ^ GETBIT(c[1], i) ^ GETBIT(r[1], i));
-
-    t = (a[2] & b[0]) ^ (a[0] & b[2]) ^ GETBIT(r[0], i);
-    SETBIT(c[2], i + 1, t ^ (a[2] & b[2]) ^ GETBIT(c[2], i) ^ GETBIT(r[2], i));
-  }
-
-  z[0] = x[0] ^ y[0] ^ c[0];
-  z[1] = x[1] ^ y[1] ^ c[1];
-  z[2] = x[2] ^ y[2] ^ c[2];
-
-  y_views[0][*countY] = c[0];
-  y_views[1][*countY] = c[1];
-  y_views[2][*countY] = c[2];
-  *countY += 1;
-}
-
-void mpc_RIGHTROTATE(uint32_t x[], int i, uint32_t z[]) {
-  z[0] = RIGHTROTATE(x[0], i);
-  z[1] = RIGHTROTATE(x[1], i);
-  z[2] = RIGHTROTATE(x[2], i);
-}
-
-void mpc_RIGHTSHIFT(uint32_t x[3], int i, uint32_t z[3]) {
-  z[0] = x[0] >> i;
-  z[1] = x[1] >> i;
-  z[2] = x[2] >> i;
-}
-
-void mpc_MAJ(uint32_t a[], uint32_t b[3], uint32_t c[3], uint32_t z[3],
-             unsigned char *randomness[3], int *randCount, View views[3],
-             int *countY) {
-  uint32_t *y_views[3] = {views[0].y, views[1].y, views[2].y};
-  mpc_MAJ_impl(a, b, c, z, randomness, randCount, y_views, countY);
-}
-
-void mpc_CH(uint32_t e[], uint32_t f[3], uint32_t g[3], uint32_t z[3],
-            unsigned char *randomness[3], int *randCount, View views[3],
-            int *countY) {
-  uint32_t *y_views[3] = {views[0].y, views[1].y, views[2].y};
-  mpc_CH_impl(e, f, g, z, randomness, randCount, y_views, countY);
-}
-
-void mpc_MAJ_impl(uint32_t a[], uint32_t b[3], uint32_t c[3], uint32_t z[3],
-                  unsigned char *randomness[3], int *randCount,
-                  uint32_t *y_views[3], int *countY) {
-  uint32_t t0[3];
-  uint32_t t1[3];
-
-  mpc_XOR(a, b, t0);
-  mpc_XOR(a, c, t1);
-  mpc_AND_impl(t0, t1, z, randomness, randCount, y_views, countY);
-  mpc_XOR(z, a, z);
-}
-
-void mpc_CH_impl(uint32_t e[], uint32_t f[3], uint32_t g[3], uint32_t z[3],
-                 unsigned char *randomness[3], int *randCount,
-                 uint32_t *y_views[3], int *countY) {
-  uint32_t t0[3];
-
-  // e & (f^g) ^ g
-  mpc_XOR(f, g, t0);
-  mpc_AND_impl(e, t0, t0, randomness, randCount, y_views, countY);
-  mpc_XOR(t0, g, z);
 }
 
 int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3],
@@ -262,9 +97,9 @@ int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3],
 
       // w[i][j] = w[i][j-16]+s0[i]+w[i][j-7]+s1[i];
 
-      mpc_ADD_impl(w[j - 16], s0, t1, randomness, &randCount, views.y, countY);
-      mpc_ADD_impl(w[j - 7], t1, t1, randomness, &randCount, views.y, countY);
-      mpc_ADD_impl(t1, s1, w[j], randomness, &randCount, views.y, countY);
+      mpc_ADD(w[j - 16], s0, t1, randomness, &randCount, views.y, countY);
+      mpc_ADD(w[j - 7], t1, t1, randomness, &randCount, views.y, countY);
+      mpc_ADD(t1, s1, w[j], randomness, &randCount, views.y, countY);
     }
 
     // Initialize working variables with current hash state
@@ -294,16 +129,16 @@ int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3],
 
       // t0 = h + s1
 
-      mpc_ADD_impl(h, s1, t0, randomness, &randCount, views.y, countY);
+      mpc_ADD(h, s1, t0, randomness, &randCount, views.y, countY);
 
-      mpc_CH_impl(e, f, g, t1, randomness, &randCount, views.y, countY);
+      mpc_CH(e, f, g, t1, randomness, &randCount, views.y, countY);
 
       // t1 = t0 + t1 (h+s1+ch)
-      mpc_ADD_impl(t0, t1, t1, randomness, &randCount, views.y, countY);
+      mpc_ADD(t0, t1, t1, randomness, &randCount, views.y, countY);
 
       mpc_ADDK_impl(t1, k[i], t1, randomness, &randCount, views.y, countY);
 
-      mpc_ADD_impl(t1, w[i], temp1, randomness, &randCount, views.y, countY);
+      mpc_ADD(t1, w[i], temp1, randomness, &randCount, views.y, countY);
 
       // s0 = RIGHTROTATE(a,2) ^ RIGHTROTATE(a,13) ^ RIGHTROTATE(a,22);
       mpc_RIGHTROTATE(a, 2, t0);
@@ -312,32 +147,32 @@ int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3],
       mpc_RIGHTROTATE(a, 22, t1);
       mpc_XOR(t0, t1, s0);
 
-      mpc_MAJ_impl(a, b, c, maj, randomness, &randCount, views.y, countY);
+      mpc_MAJ(a, b, c, maj, randomness, &randCount, views.y, countY);
 
       // temp2 = s0+maj;
-      mpc_ADD_impl(s0, maj, temp2, randomness, &randCount, views.y, countY);
+      mpc_ADD(s0, maj, temp2, randomness, &randCount, views.y, countY);
 
       memcpy(h, g, sizeof(h));
       memcpy(g, f, sizeof(g));
       memcpy(f, e, sizeof(f));
       // e = d+temp1;
-      mpc_ADD_impl(d, temp1, e, randomness, &randCount, views.y, countY);
+      mpc_ADD(d, temp1, e, randomness, &randCount, views.y, countY);
       memcpy(d, c, sizeof(d));
       memcpy(c, b, sizeof(c));
       memcpy(b, a, sizeof(b));
       // a = temp1+temp2;
 
-      mpc_ADD_impl(temp1, temp2, a, randomness, &randCount, views.y, countY);
+      mpc_ADD(temp1, temp2, a, randomness, &randCount, views.y, countY);
     }
 
-    mpc_ADD_impl(H[0], a, H[0], randomness, &randCount, views.y, countY);
-    mpc_ADD_impl(H[1], b, H[1], randomness, &randCount, views.y, countY);
-    mpc_ADD_impl(H[2], c, H[2], randomness, &randCount, views.y, countY);
-    mpc_ADD_impl(H[3], d, H[3], randomness, &randCount, views.y, countY);
-    mpc_ADD_impl(H[4], e, H[4], randomness, &randCount, views.y, countY);
-    mpc_ADD_impl(H[5], f, H[5], randomness, &randCount, views.y, countY);
-    mpc_ADD_impl(H[6], g, H[6], randomness, &randCount, views.y, countY);
-    mpc_ADD_impl(H[7], h, H[7], randomness, &randCount, views.y, countY);
+    mpc_ADD(H[0], a, H[0], randomness, &randCount, views.y, countY);
+    mpc_ADD(H[1], b, H[1], randomness, &randCount, views.y, countY);
+    mpc_ADD(H[2], c, H[2], randomness, &randCount, views.y, countY);
+    mpc_ADD(H[3], d, H[3], randomness, &randCount, views.y, countY);
+    mpc_ADD(H[4], e, H[4], randomness, &randCount, views.y, countY);
+    mpc_ADD(H[5], f, H[5], randomness, &randCount, views.y, countY);
+    mpc_ADD(H[6], g, H[6], randomness, &randCount, views.y, countY);
+    mpc_ADD(H[7], h, H[7], randomness, &randCount, views.y, countY);
   }
 
   // Free padded shares
@@ -431,16 +266,9 @@ void commit_impl(unsigned char shares[3][L_BYTES], unsigned char *randomness[3],
 
   // Explicitly add y to view
   for (int i = 0; i < 8; i++) {
-    views.y[0][countY] = (hashes[0][i * 4] << 24) |
-                         (hashes[0][i * 4 + 1] << 16) |
-                         (hashes[0][i * 4 + 2] << 8) | hashes[0][i * 4 + 3];
-
-    views.y[1][countY] = (hashes[1][i * 4] << 24) |
-                         (hashes[1][i * 4 + 1] << 16) |
-                         (hashes[1][i * 4 + 2] << 8) | hashes[1][i * 4 + 3];
-    views.y[2][countY] = (hashes[2][i * 4] << 24) |
-                         (hashes[2][i * 4 + 1] << 16) |
-                         (hashes[2][i * 4 + 2] << 8) | hashes[2][i * 4 + 3];
+    load_u32_be(&views.y[0][countY], &hashes[0][i * 4]);
+    load_u32_be(&views.y[1][countY], &hashes[1][i * 4]);
+    load_u32_be(&views.y[2][countY], &hashes[2][i * 4]);
     countY += 1;
   }
   free(hashes[0]);

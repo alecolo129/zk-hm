@@ -1,4 +1,5 @@
 #include "MPC_SHA256_VERIFIER.h"
+#include "MPC_arithmetic.h"
 #include "shared.h"
 #include "stdbool.h"
 #include <stdint.h>
@@ -6,88 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 #define VERBOSE 1
-
-inline int mpc_AND_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View ve,
-                          View ve1, unsigned char randomness[2][RAND_BYTES],
-                          int *randCount, int *countY) {
-  uint32_t r[2] = {getRandom32(randomness[0], *randCount),
-                   getRandom32(randomness[1], *randCount)};
-  *randCount += 4;
-
-  uint32_t t = 0;
-
-  t = (x[0] & y[1]) ^ (x[1] & y[0]) ^ (x[0] & y[0]) ^ r[0] ^ r[1];
-  if (ve.y[*countY] != t) {
-    return 1;
-  }
-  z[0] = t;
-  z[1] = ve1.y[*countY];
-
-  (*countY)++;
-  return 0;
-}
-
-int mpc_ADD_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View ve,
-                   View ve1, unsigned char randomness[2][RAND_BYTES],
-                   int *randCount, int *countY) {
-
-  uint32_t r[2] = {getRandom32(randomness[0], *randCount),
-                   getRandom32(randomness[1], *randCount)};
-  *randCount += 4;
-
-  uint8_t a[2], b[2];
-
-  uint8_t t;
-
-  for (int i = 0; i < 31; i++) {
-    a[0] = GETBIT(x[0] ^ ve.y[*countY], i);
-    a[1] = GETBIT(x[1] ^ ve1.y[*countY], i);
-
-    b[0] = GETBIT(y[0] ^ ve.y[*countY], i);
-    b[1] = GETBIT(y[1] ^ ve1.y[*countY], i);
-
-    t = (a[0] & b[1]) ^ (a[1] & b[0]) ^ GETBIT(r[1], i);
-    if (GETBIT(ve.y[*countY], i + 1) !=
-        (t ^ (a[0] & b[0]) ^ GETBIT(ve.y[*countY], i) ^ GETBIT(r[0], i))) {
-      return 1;
-    }
-  }
-
-  z[0] = x[0] ^ y[0] ^ ve.y[*countY];
-  z[1] = x[1] ^ y[1] ^ ve1.y[*countY];
-  (*countY)++;
-  return 0;
-}
-
-int mpc_MAJ_verify(uint32_t a[2], uint32_t b[2], uint32_t c[2], uint32_t z[3],
-                   View ve, View ve1, unsigned char randomness[2][RAND_BYTES],
-                   int *randCount, int *countY) {
-  uint32_t t0[3];
-  uint32_t t1[3];
-
-  mpc_XOR2(a, b, t0);
-  mpc_XOR2(a, c, t1);
-  if (mpc_AND_verify(t0, t1, z, ve, ve1, randomness, randCount, countY) == 1) {
-    return 1;
-  }
-  mpc_XOR2(z, a, z);
-  return 0;
-}
-
-inline int mpc_CH_verify(uint32_t e[2], uint32_t f[2], uint32_t g[2],
-                         uint32_t z[2], View ve, View ve1,
-                         unsigned char randomness[2][RAND_BYTES],
-                         int *randCount, int *countY) {
-
-  uint32_t t0[3];
-  mpc_XOR2(f, g, t0);
-  if (mpc_AND_verify(e, t0, t0, ve, ve1, randomness, randCount, countY) == 1) {
-    return 1;
-  }
-  mpc_XOR2(t0, g, z);
-
-  return 0;
-}
 
 bool verify_hash(a a, int e, z z) {
 

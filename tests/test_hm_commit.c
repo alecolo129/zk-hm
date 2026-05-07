@@ -73,6 +73,7 @@ int main(void) {
 
   uint8_t msg = 1;
   RAND_bytes((uint8_t *)&msg, 1);
+  msg&=1;
   uint32_t rWords[L_WORDS];
   RAND_bytes((uint8_t *)rWords, sizeof(rWords));
 
@@ -125,7 +126,8 @@ int main(void) {
       openedRs[k][1] = rShares[k][(e + 1) % 3];
     }
     if (!mpc_inner_prod_verify(H, openedShares, openedRs, ys, e)) {
-      // return EXIT_FAILURE;
+      printf("MPC inner prod cannot verify! - %d\n", i);
+      exit(EXIT_FAILURE);
     }
   }
   printf("Success!\n");

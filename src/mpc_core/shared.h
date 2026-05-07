@@ -198,22 +198,6 @@ inline void reconstruct(uint32_t *y0, uint32_t *y1, uint32_t *y2,
   }
 }
 
-inline void mpc_XOR(uint32_t x[3], uint32_t y[3], uint32_t z[3]) {
-  z[0] = x[0] ^ y[0];
-  z[1] = x[1] ^ y[1];
-  z[2] = x[2] ^ y[2];
-}
-
-inline void mpc_XOR2(uint32_t x[2], uint32_t y[2], uint32_t z[2]) {
-  z[0] = x[0] ^ y[0];
-  z[1] = x[1] ^ y[1];
-}
-
-inline void mpc_NEGATE2(uint32_t x[2], uint32_t z[2]) {
-  z[0] = ~x[0];
-  z[1] = ~x[1];
-}
-
 void openmp_locking_callback(int mode, int type, char *file, int line);
 
 unsigned long openmp_thread_id(void);

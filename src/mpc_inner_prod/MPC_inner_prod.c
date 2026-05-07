@@ -1,4 +1,5 @@
 #include "MPC_inner_prod.h"
+#include "MPC_arithmetic.h"
 #include "shared.h"
 #include "stdbool.h"
 #include <stdint.h>
