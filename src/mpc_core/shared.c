@@ -2,6 +2,7 @@
 #include "omp.h"
 #include "openssl/sha.h"
 #include <openssl/evp.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <strings.h>
@@ -12,25 +13,31 @@ void handleErrors(void) {
   abort();
 }
 
-void getAllRandomness(unsigned char key[16], unsigned char randomness[2912 * NUM_SHA256_BLOCKS]) {
-  // Generate randomness: We use SHA256_ROUNDS * (728*32) bit of randomness per key.
-  // Since AES block size is 128 bit, we need to run 728*32/128 = 182 iterations
+void getAllRandomness(unsigned char key[16],
+                      unsigned char randomness[2912 * NUM_SHA256_BLOCKS]) {
+  // Generate randomness: We use SHA256_ROUNDS * (728*32) = SHA256_ROUNDS * 2912 bit of randomness per
+  // key.
 
   EVP_CIPHER_CTX *ctx = setupAES(key);
   if (ctx == NULL) {
     handleErrors();
   }
-  unsigned char plaintext[16] = {'0', '0', '0', '0', '0', '0', '0', '0',
-                                 '0', '0', '0', '0', '0', '0', '0', '0'};
 
-  int len;
-  for (int j = 0; j < NUM_SHA256_BLOCKS * 182; j++) { // TODO: this depends on num rounds!
-    if (1 != EVP_EncryptUpdate(ctx, &randomness[j * 16], &len, plaintext,
-                               16))
+  unsigned char plaintext[4096] = {0};
+  size_t outlen = 2912 * NUM_SHA256_BLOCKS;
+  while (outlen) {
+    int chunk = (outlen > sizeof(plaintext)) ? (int)sizeof(plaintext) : (int)outlen;
+    int produced = 0;
+    if (1 != EVP_EncryptUpdate(ctx, randomness, &produced, plaintext, chunk)){
       handleErrors();
+    }
+    randomness += produced;
+    outlen -= (size_t)produced;
   }
+  
   EVP_CIPHER_CTX_free(ctx);
 }
+
 
 void getAllRandomness2(unsigned char key[16], unsigned char *randomness,
                        int randSize) {
@@ -41,14 +48,14 @@ void getAllRandomness2(unsigned char key[16], unsigned char *randomness,
 
   int len;
   for (int j = 0; j < randSize / 16; j++) {
-    if (1 != EVP_EncryptUpdate(ctx, &randomness[j * 16], &len, plaintext,
-                               16))
+    if (1 != EVP_EncryptUpdate(ctx, &randomness[j * 16], &len, plaintext, 16))
       handleErrors();
   }
   EVP_CIPHER_CTX_free(ctx);
 }
 
-uint32_t getRandom32(unsigned char randomness[2912 * NUM_SHA256_BLOCKS], int randCount) {
+uint32_t getRandom32(unsigned char randomness[2912 * NUM_SHA256_BLOCKS],
+                     int randCount) {
   uint32_t ret;
   memcpy(&ret, &randomness[randCount], 4);
   return ret;

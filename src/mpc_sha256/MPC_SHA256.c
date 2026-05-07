@@ -236,14 +236,13 @@ int secretShare(unsigned char *input, int numBytes,
 void generate_randomness(unsigned int numRounds,
                          unsigned char keys[numRounds][3][16],
                          unsigned char *randomness[numRounds][3]) {
-#pragma omp parallel for
+#pragma omp parallel for collapse(2) schedule(static)
   for (int k = 0; k < numRounds; k++) {
     for (int j = 0; j < 3; j++) {
       // Note: In the MPC protocol we need 32 bit of randomness for each ADD/AND
       // operation in SHA256 (operates on 32bit words). We have 64 AND gates and
       // 664 ADD gates, so we need 728 * 32 / 8 = 2912 bytes of randomness.
-      randomness[k][j] =
-          malloc(NUM_SHA256_BLOCKS * 2912 * sizeof(unsigned char));
+      randomness[k][j] = malloc(NUM_SHA256_BLOCKS * 2912);
       getAllRandomness(keys[k][j], randomness[k][j]);
     }
   }
