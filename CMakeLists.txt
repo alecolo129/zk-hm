@@ -6,6 +6,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # Options
 add_compile_options(-O3)
+add_compile_options(-march=native)
 
 option(ENABLE_SANITIZERS "Enable ASan/UBSan" OFF)
 
