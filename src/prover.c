@@ -7,7 +7,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <time.h>
 
 static double totalCrypto = 0;
@@ -89,7 +88,7 @@ void share_secrets(uint8_t rShares[NUM_ROUNDS][3][L_BYTES],
                    const uint8_t rBytes[L_BYTES], const uint8_t msg) {
   RAND_bytes_no_fail((uint8_t *)rShares, NUM_ROUNDS * 3 * L_BYTES);
   RAND_bytes_no_fail((uint8_t *)msgShares, NUM_ROUNDS * 3 * sizeof(uint32_t));
-#pragma omp parallel for
+
   for (int k = 0; k < NUM_ROUNDS; k++) {
     for (int j = 0; j < L_BYTES; j++) {
       rShares[k][2][j] =
@@ -124,15 +123,14 @@ void mpc_halevi_micali_prover(View localViews[NUM_ROUNDS][3], a as[NUM_ROUNDS],
     commit(rShares[k], randomness[k], rs[k], localViews[k]);
 
     // copy last part of the view.y (i.e., SHA256 output) into a.yp
-    output(localViews[k][0], as[k].yp[0]);
-    output(localViews[k][1], as[k].yp[1]);
-    output(localViews[k][2], as[k].yp[2]);
+    output(&localViews[k][0], as[k].yp[0]);
+    output(&localViews[k][1], as[k].yp[1]);
+    output(&localViews[k][2], as[k].yp[2]);
 
     // TODO: free and allocate once
     for (int j = 0; j < 3; j++) {
       free(randomness[k][j]);
     }
-
     // prove H(r) = m
     uint32_t rWords[L_WORDS][3];
     for (int i = 0; i < L_WORDS; i++) {
@@ -154,11 +152,11 @@ void hash_views(uint8_t keys[NUM_ROUNDS][3][16], uint8_t rs[NUM_ROUNDS][3][4],
 #pragma omp parallel for
   for (int k = 0; k < NUM_ROUNDS; k++) {
     uint8_t hash1[SHA256_DIGEST_LENGTH];
-    H(keys[k][0], localViews[k][0], rs[k][0], hash1);
+    H(keys[k][0], &localViews[k][0], rs[k][0], hash1);
     memcpy(as[k].h[0], &hash1, 32);
-    H(keys[k][1], localViews[k][1], rs[k][1], hash1);
+    H(keys[k][1], &localViews[k][1], rs[k][1], hash1);
     memcpy(as[k].h[1], &hash1, 32);
-    H(keys[k][2], localViews[k][2], rs[k][2], hash1);
+    H(keys[k][2], &localViews[k][2], rs[k][2], hash1);
     memcpy(as[k].h[2], &hash1, 32);
   }
 }
@@ -207,13 +205,15 @@ int main(void) {
 
   uint8_t rBytes[L_BYTES];
   uint8_t msg;
-  RAND_bytes_no_fail((uint8_t *)rBytes, sizeof(rBytes)); // take random r in {0,1}^L
+  RAND_bytes_no_fail((uint8_t *)rBytes,
+                     sizeof(rBytes)); // take random r in {0,1}^L
   RAND_bytes_no_fail(&msg, sizeof(msg));
   msg &= 1;
   printf("Iterations of SHA: %d\n", NUM_ROUNDS);
 
   double begin = omp_get_wtime();
-  uint8_t rs[NUM_ROUNDS][3][4];    // randomness internal commitments for NIZKP: NUM_ROUNDS rounds * 3 parties * 32bits
+  uint8_t rs[NUM_ROUNDS][3][4];    // randomness internal commitments for NIZKP:
+                                   // NUM_ROUNDS rounds * 3 parties * 32bits
   uint8_t keys[NUM_ROUNDS][3][16]; // NUM_ROUNDS rounds * 3 parties * 128bits
   uint8_t keyH[16];                // key to generate universal hash function
   a as[NUM_ROUNDS]; // containes 32 bytes ouput for each view and the

@@ -87,11 +87,11 @@ void MD(const unsigned char *r, uint32_t r_len,
   SHA256(r, r_len, hash);
 }
 
-void H(unsigned char k[16], View v, unsigned char r[4],
+void H(unsigned char k[16], View *v, unsigned char r[4],
        unsigned char hash[SHA256_DIGEST_LENGTH]) {
   EVP_MD_CTX *ctx = setupSHA256();
   EVP_DigestUpdate(ctx, k, 16);
-  EVP_DigestUpdate(ctx, &v, sizeof(v));
+  EVP_DigestUpdate(ctx, v, sizeof(View));
   EVP_DigestUpdate(ctx, r, 4);
   uint32_t outlen = 0;
   EVP_DigestFinal_ex(ctx, hash, &outlen);

@@ -12,7 +12,7 @@ bool verify_hash(a a, int e, z z) {
 
   unsigned char *hash = malloc(SHA256_DIGEST_LENGTH);
 
-  H(z.ke, z.ve, z.re, hash);
+  H(z.ke, &z.ve, z.re, hash);
   if (memcmp(a.h[e], hash, 32) != 0) {
 #if VERBOSE
     printf("Failing at %d", __LINE__);
@@ -20,7 +20,7 @@ bool verify_hash(a a, int e, z z) {
     return false;
   }
 
-  H(z.ke1, z.ve1, z.re1, hash);
+  H(z.ke1, &z.ve1, z.re1, hash);
   if (memcmp(a.h[(e + 1) % 3], hash, 32) != 0) {
 #if VERBOSE
     printf("Failing at %d", __LINE__);
@@ -59,7 +59,7 @@ int verify_hash2(a2 a, int e, z2 z) {
 int verify(a a, int e, z z) {
 
   uint32_t *result = malloc(32);
-  output(z.ve, result);
+  output(&z.ve, result);
   if (memcmp(a.yp[e], result, 32) != 0) {
 #if VERBOSE
     printf("Failing at %d", __LINE__);
@@ -67,7 +67,7 @@ int verify(a a, int e, z z) {
     return 1;
   }
 
-  output(z.ve1, result);
+  output(&z.ve1, result);
   if (memcmp(a.yp[(e + 1) % 3], result, 32) != 0) {
 #if VERBOSE
     printf("Failing at %d", __LINE__);

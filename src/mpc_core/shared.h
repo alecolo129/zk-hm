@@ -153,7 +153,7 @@ void cleanup_EVP();
 // Hash
 void MD(const unsigned char *r, uint32_t r_len,
         unsigned char hash[SHA256_DIGEST_LENGTH]);
-void H(unsigned char k[16], View v, unsigned char r[4],
+void H(unsigned char k[16], View *v, unsigned char r[4],
        unsigned char hash[SHA256_DIGEST_LENGTH]);
 void H2(unsigned char k[16], View2 v, unsigned char r[4],
         unsigned char hash[SHA256_DIGEST_LENGTH]);
@@ -187,8 +187,8 @@ inline void output2(View2 v[3], a2 *a) {
   }
 }
 
-inline void output(View v, uint32_t *result) {
-  memcpy(result, &v.y[ySize - 8], 32);
+inline void output(View *v, uint32_t *result) {
+  memcpy(result, &v->y[ySize - 8], 32);
 }
 
 inline void reconstruct(uint32_t *y0, uint32_t *y1, uint32_t *y2,
