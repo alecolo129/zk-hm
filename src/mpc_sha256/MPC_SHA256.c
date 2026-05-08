@@ -255,10 +255,9 @@ void commit_impl(unsigned char shares[3][L_BYTES], unsigned char *randomness[3],
   inputs[0] = shares[0];
   inputs[1] = shares[1];
   inputs[2] = shares[2];
-  unsigned char *hashes[3];
-  hashes[0] = malloc(32);
-  hashes[1] = malloc(32);
-  hashes[2] = malloc(32);
+  
+  unsigned char *buff = malloc(96);
+  unsigned char *hashes[3] = {buff, &buff[32], &buff[64]};
 
   int countY = 0;
   mpc_sha256(hashes, inputs, randomness, views, &countY);
@@ -270,9 +269,7 @@ void commit_impl(unsigned char shares[3][L_BYTES], unsigned char *randomness[3],
     load_u32_be(&views.y[2][countY], &hashes[2][i * 4]);
     countY += 1;
   }
-  free(hashes[0]);
-  free(hashes[1]);
-  free(hashes[2]);
+  free(buff);
 }
 
 void commit(unsigned char shares[3][L_BYTES], unsigned char *randomness[3],
