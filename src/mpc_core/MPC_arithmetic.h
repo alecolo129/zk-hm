@@ -60,6 +60,16 @@ inline void mpc_ADDK_impl(uint32_t x[3], uint32_t y, uint32_t z[3],
   mpc_ADD(x, ys, z, randomness, randCount, y_views, countY);
 }
 
+inline void mpc_RIGHTROTATE2(uint32_t x[], int i, uint32_t z[]) {
+  z[0] = RIGHTROTATE(x[0], i);
+  z[1] = RIGHTROTATE(x[1], i);
+}
+
+inline void mpc_RIGHTSHIFT2(uint32_t x[2], int i, uint32_t z[2]) {
+  z[0] = x[0] >> i;
+  z[1] = x[1] >> i;
+}
+
 int mpc_AND_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View ve,
                           View ve1, unsigned char randomness[2][RAND_BYTES],
                           int *randCount, int *countY);
