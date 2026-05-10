@@ -70,7 +70,7 @@ void print_runtime(const char *outputFile) {
 
 // TODO: avoid potential leakages
 inline void RAND_bytes_no_fail(uint8_t *buf, int num) {
-  if (!RAND_bytes(buf, num)) {
+  if (RAND_bytes(buf, num) != 1) {
     printf("RAND_bytes failed crypto, aborting\n");
     exit(1);
   }
@@ -83,25 +83,17 @@ void generate_keys_and_rs(uint8_t keys[NUM_ROUNDS][3][16], uint8_t keyH[16],
   RAND_bytes_no_fail((uint8_t *)rs, NUM_ROUNDS * 3 * 4);
 }
 
-void share_secrets(uint8_t rShares[NUM_ROUNDS][3][L_BYTES],
-                   uint32_t msgShares[NUM_ROUNDS][3],
+void share_secrets(uint8_t rShares[3][L_BYTES], uint32_t msgShares[3],
                    const uint8_t rBytes[L_BYTES], const uint8_t msg) {
-  RAND_bytes_no_fail((uint8_t *)rShares, NUM_ROUNDS * 3 * L_BYTES);
-  RAND_bytes_no_fail((uint8_t *)msgShares, NUM_ROUNDS * 3 * sizeof(uint32_t));
+  RAND_bytes_no_fail((uint8_t *)rShares, 3 * L_BYTES);
+  RAND_bytes_no_fail((uint8_t *)msgShares, 3 * sizeof(uint32_t));
 
-  for (int k = 0; k < NUM_ROUNDS; k++) {
-    for (int j = 0; j < L_BYTES; j++) {
-      rShares[k][2][j] =
-          rBytes[j] ^ rShares[k][0][j] ^
-          rShares[k][1][j]; // for each round, set share party_2 to input ^
-                            // share party_0 ^ share party_1
-    }
-    msgShares[k][0] &= 1;
-    msgShares[k][1] &= 1;
-    msgShares[k][2] = msg ^ msgShares[k][0] ^
-                      msgShares[k][1]; // for each round, set share party_2 to
-                                       // input ^ share party_0 ^ share party_1
+  for (int j = 0; j < L_BYTES; j++) {
+    rShares[2][j] = rBytes[j] ^ rShares[0][j] ^ rShares[1][j];
   }
+  msgShares[0] &= 1;
+  msgShares[1] &= 1;
+  msgShares[2] = msg ^ msgShares[0] ^ msgShares[1];
 }
 
 void bytes_to_words(uint32_t rWords[L_WORDS], const uint8_t rBytes[L_BYTES]) {
@@ -110,55 +102,43 @@ void bytes_to_words(uint32_t rWords[L_WORDS], const uint8_t rBytes[L_BYTES]) {
   }
 }
 
-void mpc_halevi_micali_prover(View localViews[NUM_ROUNDS][3], a as[NUM_ROUNDS],
-                              uint8_t *randomness[NUM_ROUNDS][3],
-                              uint8_t rs[NUM_ROUNDS][3][4],
-                              const UniversalHash h,
-                              uint8_t rShares[NUM_ROUNDS][3][L_BYTES],
-                              const uint32_t msgShares[NUM_ROUNDS][3]) {
-#pragma omp parallel for
-  for (int k = 0; k < NUM_ROUNDS; k++) {
+void mpc_halevi_micali_prover(View localViews[3], a *as, uint8_t *randomness[3],
+                              uint8_t rs[3][4], const UniversalHash h,
+                              uint8_t rShares[3][L_BYTES],
+                              const uint32_t msgShares[3]) {
 
-    // prove y = SHA256(r)
-    commit(rShares[k], randomness[k], rs[k], localViews[k]);
+  // prove y = SHA256(r)
+  commit(rShares, randomness, rs, localViews);
 
-    // copy last part of the view.y (i.e., SHA256 output) into a.yp
-    output(&localViews[k][0], as[k].yp[0]);
-    output(&localViews[k][1], as[k].yp[1]);
-    output(&localViews[k][2], as[k].yp[2]);
+  // copy last part of the view.y (i.e., SHA256 output) into a.yp
+  output(&localViews[0], as->yp[0]);
+  output(&localViews[1], as->yp[1]);
+  output(&localViews[2], as->yp[2]);
 
-    // TODO: free and allocate once
-    for (int j = 0; j < 3; j++) {
-      free(randomness[k][j]);
-    }
-    // prove H(r) = m
-    uint32_t rWords[L_WORDS][3];
-    for (int i = 0; i < L_WORDS; i++) {
-      memcpy(&rWords[i][0], &rShares[k][0][i * 4], sizeof(uint32_t));
-      memcpy(&rWords[i][1], &rShares[k][1][i * 4], sizeof(uint32_t));
-      memcpy(&rWords[i][2], &rShares[k][2][i * 4], sizeof(uint32_t));
-    }
-    // copy msg share into respective local view
-    localViews[k][0].msg = msgShares[k][0];
-    localViews[k][1].msg = msgShares[k][1];
-    localViews[k][2].msg = msgShares[k][2];
-
-    mpc_inner_prod_prover(h, msgShares[k], rWords, as[k].y2p);
+  // prove H(r) = m
+  uint32_t rWords[L_WORDS][3];
+  for (int i = 0; i < L_WORDS; i++) {
+    memcpy(&rWords[i][0], &rShares[0][i * 4], sizeof(uint32_t));
+    memcpy(&rWords[i][1], &rShares[1][i * 4], sizeof(uint32_t));
+    memcpy(&rWords[i][2], &rShares[2][i * 4], sizeof(uint32_t));
   }
+  // copy msg share into respective local view
+  localViews[0].msg = msgShares[0];
+  localViews[1].msg = msgShares[1];
+  localViews[2].msg = msgShares[2];
+
+  mpc_inner_prod_prover(h, msgShares, rWords, as->y2p);
 }
 
-void hash_views(uint8_t keys[NUM_ROUNDS][3][16], uint8_t rs[NUM_ROUNDS][3][4],
-                View localViews[NUM_ROUNDS][3], a as[NUM_ROUNDS]) {
-#pragma omp parallel for
-  for (int k = 0; k < NUM_ROUNDS; k++) {
-    uint8_t hash1[SHA256_DIGEST_LENGTH];
-    H(keys[k][0], &localViews[k][0], rs[k][0], hash1);
-    memcpy(as[k].h[0], &hash1, 32);
-    H(keys[k][1], &localViews[k][1], rs[k][1], hash1);
-    memcpy(as[k].h[1], &hash1, 32);
-    H(keys[k][2], &localViews[k][2], rs[k][2], hash1);
-    memcpy(as[k].h[2], &hash1, 32);
-  }
+void hash_views(uint8_t keys[3][16], uint8_t rs[3][4], View localViews[3],
+                a *as) {
+  uint8_t hash1[SHA256_DIGEST_LENGTH];
+  H(keys[0], &localViews[0], rs[0], hash1);
+  memcpy(as->h[0], &hash1, 32);
+  H(keys[1], &localViews[1], rs[1], hash1);
+  memcpy(as->h[1], &hash1, 32);
+  H(keys[2], &localViews[2], rs[2], hash1);
+  memcpy(as->h[2], &hash1, 32);
 }
 
 void generate_challenge(a as[NUM_ROUNDS], int es[NUM_ROUNDS],
@@ -200,6 +180,21 @@ void write_to_file(char outputFile[3 * sizeof(int) + 8], const a as[NUM_ROUNDS],
   }
 }
 
+static void init_randomness(uint8_t *randomness[3]) {
+  randomness[0] = malloc(3 * RAND_BYTES);
+  if (!randomness[0]) {
+    fprintf(stderr, "(%d) malloc failure...\n", __LINE__);
+    exit(EXIT_FAILURE);
+  }
+  randomness[1] = randomness[0] + RAND_BYTES;
+  randomness[2] = randomness[1] + RAND_BYTES;
+}
+
+static void free_randomness(uint8_t *randomness[3]) {
+  if (randomness[0] != NULL)
+    free(randomness[0]);
+}
+
 int main(void) {
   init();
 
@@ -223,34 +218,33 @@ int main(void) {
   // Generating keys
   double beginCrypto = omp_get_wtime();
   generate_keys_and_rs(keys, keyH, rs);
-  update_clock(beginCrypto, &totalCrypto);
-
-  // Sharing secrets
-  double beginSS = omp_get_wtime();
-  uint8_t rShares[NUM_ROUNDS][3][L_BYTES];
-  uint32_t msgShares[NUM_ROUNDS][3];
-  share_secrets(rShares, msgShares, rBytes, msg);
-  update_clock(beginSS, &totalSS);
-
-  // Generating randomness i.e., random tapes
-  double beginRandom = omp_get_wtime();
-  uint8_t *randomness[NUM_ROUNDS][3];
-  generate_randomness(NUM_ROUNDS, keys, randomness);
-  update_clock(beginRandom, &totalRandom);
-
-  // Running HM commitment
-  double beginHM = omp_get_wtime();
   UniversalHash h;
   pick_universal_hash(&h, keyH, rBytes, msg); // pick universal hash function
-  mpc_halevi_micali_prover(localViews, as, randomness, rs, h, rShares,
-                           msgShares);
-  update_clock(beginHM, &totalHM);
+  update_clock(beginCrypto, &totalCrypto);
 
-  // Committing
-  double beginHash = omp_get_wtime();
-  hash_views(keys, rs, localViews, as);
-  update_clock(beginHash, &totalHash);
+#pragma omp parallel
+  {
+    // Init thread state
+    uint32_t msgShares[3];
+    uint8_t rShares[3][L_BYTES];
+    uint8_t *randomness[3] = {0};
+    init_randomness(randomness);
+#pragma omp for
+    for (int k = 0; k < NUM_ROUNDS; k++) {
+      // Sharing secrets
+      share_secrets(rShares, msgShares, rBytes, msg);
+      // Generating randomness i.e., random tapes
+      generate_randomness(keys[k], randomness);
+      // Running HM commitment
+      mpc_halevi_micali_prover(localViews[k], &as[k], randomness, rs[k], h,
+                               rShares, msgShares);
+      // Committing
+      hash_views(keys[k], rs[k], localViews[k], &as[k]);
+    }
 
+    // Release thread state
+    free_randomness(randomness);
+  }
   update_clock(begin, &inMilliA);
 
   // Generating E
@@ -265,8 +259,8 @@ int main(void) {
   double beginZ = omp_get_wtime();
   z *zs = malloc(sizeof(z) * NUM_ROUNDS);
 
-  // Generate proof
-  #pragma omp parallel for
+// Generate proof
+#pragma omp parallel for
   for (int i = 0; i < NUM_ROUNDS; i++) {
     // create proof struct with view, key and randomness for parties es[i],
     // es[i]+1%3
