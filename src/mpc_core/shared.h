@@ -20,8 +20,6 @@ Description : Common functions for the SHA-256 prover and verifier
 #include <stdint.h>
 #include <string.h>
 
-static const int NUM_ROUNDS = 136;
-
 /* A 128 bit IV for randomness generation */
 static const unsigned char iv[17] = "0123456789012345";
 
@@ -41,17 +39,31 @@ static const uint32_t k[64] = {
     0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
     0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
 
-#define L_BITS 1024u
+// Security parameters
+
+/* Number of repetition to achieve desired soundness error.
+ * With 136 round, soundness error = 2^{-80}*/
+#define NUM_ROUNDS 136
+/* Number of bits of the comitted message. */
+#define MSG_BITS 1u
+/* Bindness security parameter, we have k/2 of collision resistance. 
+* Note: For bit commitments, we save 1 SHA block if we accept k=238 (i.e., 119 bits of collision resistance).
+*/
+#define K 256
+/* Reuired length of the Halevi-Micali random vector 'r' (i.e., the opening). */
+#define L_BITS (4 * K + 2 * MSG_BITS + 4)
 #define L_BYTES L_BITS / 8
 #define L_WORDS L_BITS / 32
-
+/* Reuired number of SHA256 blocks to hash the committed vector 'r'. */
 #define NUM_SHA256_BLOCKS                                                      \
   ((L_BITS + 1 + 64 + 511) / 512) // ceil((L + 1 + 54) / 512)
-
-#define RAND_BYTES                                                             \
-  2912 * NUM_SHA256_BLOCKS // we need 2912 bytes of randomness per round
-
-#define ySize NUM_SHA256_BLOCKS * 728 + 8
+/* Reuired number of random bytes to proof knowledge of the committed message.
+ * Note: for each SHA256 block we need 2912 bytes of randomness */
+#define RAND_BYTES 2912 * NUM_SHA256_BLOCKS
+/* Size of the circuit output in 32-bit words.
+ * We need 'RAND_BYTES/4' words to store all the AND/ADD openings + 8 words to
+ * store the SHA256 output. */
+#define ySize RAND_BYTES / 4 + 8
 
 typedef struct {
   uint32_t A[L_WORDS];
@@ -86,9 +98,9 @@ typedef struct {
   unsigned char re1[4];
 } z;
 
+// TODO: This part needs to be updated
 // ---- pre-image equality => prove m : c1 = SHA256(m,r) & c2 = SHA256(m, r')
 // for some randomness r,r'
-// TODO: This part needs to be updated
 
 #define y2Size L_WORDS // TODO: this is outdated
 
