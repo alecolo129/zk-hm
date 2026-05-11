@@ -61,25 +61,25 @@ void generate_H(uint32_t A[L_WORDS], uint8_t *b, const uint8_t keyH[16],
   *b ^= m & 1;
 }
 
-void mpc_inner_prod_prover(const UniversalHash h, const uint32_t m[3],
+void mpc_inner_prod_prover(const UniversalHash *h, const uint32_t m[3],
                            const uint32_t r[L_WORDS][3], uint32_t y[3]) {
   uint32_t t1[3] = {0};
   memset(y, 0, 3*sizeof(uint32_t));
   for (int i = 0; i < L_WORDS; i++) {
-    mpc_ANDK(r[i], h.A[i], t1);
+    mpc_ANDK(r[i], h->A[i], t1);
     mpc_XOR(y, t1, y);
   }
   mpc_parity(y, y);
   mpc_XOR((uint32_t*) m, y, y);
 }
 
-bool mpc_inner_prod_verify(const UniversalHash h, const uint32_t m[2],
+bool mpc_inner_prod_verify(const UniversalHash *h, const uint32_t m[2],
                            const uint32_t r[L_WORDS][2], const uint32_t y[3],
                            const uint32_t e) {
   uint32_t y_rec[2] = {0};
   uint32_t t1[2];
   for (int i = 0; i < L_WORDS; i++) {
-    mpc_ANDK2(r[i], h.A[i], t1);
+    mpc_ANDK2(r[i], h->A[i], t1);
     mpc_XOR2_const(y_rec, t1, y_rec);
   }
   mpc_parity2(y_rec, y_rec);
@@ -89,7 +89,7 @@ bool mpc_inner_prod_verify(const UniversalHash h, const uint32_t m[2],
     printf("Failed at line %d\n", __LINE__);
     return false;
   }
-  mpc_XORK2(y_rec, h.b, y_rec);
+  mpc_XORK2(y_rec, h->b, y_rec);
 
   return y_rec[0] ^ y_rec[1] ^ y[(e + 2) % 3] == 0;
 }

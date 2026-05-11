@@ -109,7 +109,7 @@ int main(void) {
     }
 
     uint32_t ys[3] = {0};
-    mpc_inner_prod_prover(H, msgShares, rShares, ys);
+    mpc_inner_prod_prover(&H, msgShares, rShares, ys);
     if (((ys[0] ^ ys[1] ^ ys[2]) ^ H.b) != 0) {
       printf("MPC prover produces unexpected result! - %d\n", i);
       exit(EXIT_FAILURE);
@@ -125,7 +125,7 @@ int main(void) {
       openedRs[k][0] = rShares[k][e];
       openedRs[k][1] = rShares[k][(e + 1) % 3];
     }
-    if (!mpc_inner_prod_verify(H, openedShares, openedRs, ys, e)) {
+    if (!mpc_inner_prod_verify(&H, openedShares, openedRs, ys, e)) {
       printf("MPC inner prod cannot verify! - %d\n", i);
       exit(EXIT_FAILURE);
     }
