@@ -91,12 +91,23 @@ typedef struct {
   // keys can be used by verifier to obtain random tapes
   unsigned char ke[16];  // key party i
   unsigned char ke1[16]; // key party i+1
-  View ve;               // view party i
-  View ve1;              // view party i+1
+  View *ve;               // view party i
+  View *ve1;              // view party i+1
   // randomness used in commitments
   unsigned char re[4];
   unsigned char re1[4];
 } z;
+
+
+typedef struct {
+    unsigned char ke[16];
+    unsigned char ke1[16];
+    unsigned char re[4];
+    unsigned char re1[4];
+    View ve;     // embedded bytes
+    View ve1;    // embedded bytes
+} z_disk;
+
 
 // TODO: This part needs to be updated
 // ---- pre-image equality => prove m : c1 = SHA256(m,r) & c2 = SHA256(m, r')

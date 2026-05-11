@@ -268,12 +268,12 @@ void commit_impl(unsigned char shares[3][L_BYTES], unsigned char *randomness[3],
 }
 
 void commit(unsigned char shares[3][L_BYTES], unsigned char *randomness[3],
-            unsigned char rs[3][4], View views[3]) {
+            unsigned char rs[3][4], View *views[3]) {
 
   ViewsPtr views_ptr;
   for (int j = 0; j < 3; j++) {
-    views_ptr.x[j] = views[j].x;
-    views_ptr.y[j] = views[j].y;
+    views_ptr.x[j] = views[j]->x;
+    views_ptr.y[j] = views[j]->y;
   }
 
   commit_impl(shares, randomness, views_ptr);
@@ -296,7 +296,7 @@ void commit2(unsigned char shares[3][L_BYTES], unsigned char *randomness[3],
 }
 
 z prove(int e, unsigned char keys[3][16], unsigned char rs[3][4],
-        View views[3]) {
+        View *views[3]) {
   z z;
   memcpy(z.ke, keys[e], 16);
   memcpy(z.ke1, keys[(e + 1) % 3], 16);

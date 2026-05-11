@@ -44,19 +44,51 @@ int read_hash(FILE *f, uint8_t keyH[16], UniversalHash *H) {
   return (nRead == sizeof(buf) ? 0 : -1);
 }
 
-int read_zk_proof_at(FILE *f, int k, a *a_ptr, z *z_ptr) {
+int read_zk_proof_at(FILE *f, unsigned char *buf, size_t bufSize, int k,
+                     a *a_ptr, z *z_ptr) {
   off_t initial_offset =
       16 + 1; // TODO: this should not depend on H.b being 1 byte
-  unsigned char buf[sizeof(*a_ptr) + sizeof(*z_ptr)];
 
-  int fd = fileno(f);
-  off_t off = initial_offset + (off_t)k * sizeof(buf);
-  ssize_t nRead = pread(fd, buf, sizeof(buf), off);
-  if (nRead == sizeof(buf)) {
-    memcpy(a_ptr, buf, sizeof(*a_ptr));
-    memcpy(z_ptr, buf + sizeof(*a_ptr), sizeof(*z_ptr));
+  size_t proofSize = sizeof(a) + sizeof(z_disk);
+  if (bufSize < proofSize) {
+    return -1;
   }
-  return (nRead == (ssize_t)sizeof(buf) ? 0 : -1);
+
+  // read buffer
+  int fd = fileno(f);
+  off_t off = initial_offset + (off_t)k * proofSize;
+  ssize_t nRead = pread(fd, buf, proofSize, off);
+  if (nRead != proofSize) {
+    return -1;
+  }
+
+  size_t bufIdx = 0;
+  memcpy(a_ptr, buf, sizeof(*a_ptr));
+  bufIdx += sizeof(*a_ptr);
+
+  memcpy(z_ptr->ke, buf + bufIdx, sizeof(z_ptr->ke));
+  bufIdx += sizeof(z_ptr->ke);
+  memcpy(z_ptr->ke1, buf + bufIdx, sizeof(z_ptr->ke1));
+  bufIdx += sizeof(z_ptr->ke1);
+
+  memcpy(z_ptr->re, buf + bufIdx, sizeof(z_ptr->re));
+  bufIdx += sizeof(z_ptr->re);
+  memcpy(z_ptr->re1, buf + bufIdx, sizeof(z_ptr->re1));
+  bufIdx += sizeof(z_ptr->re1);
+
+  // allocate views memory
+  z_ptr->ve = malloc(sizeof(View));
+  z_ptr->ve1 = malloc(sizeof(View));
+  if (!z_ptr->ve || !z_ptr->ve1) {
+    return -1;
+  }
+
+  memcpy(z_ptr->ve, buf + bufIdx, sizeof(View));
+  bufIdx += sizeof(*z_ptr->ve);
+  memcpy(z_ptr->ve1, buf + bufIdx, sizeof(View));
+  bufIdx += sizeof(*z_ptr->ve1);
+
+  return 0;
 }
 
 bool mpc_halevi_micali_verifier(UniversalHash *H, a *a, z *z, int e) {
@@ -70,14 +102,14 @@ bool mpc_halevi_micali_verifier(UniversalHash *H, a *a, z *z, int e) {
     return false;
   }
 
-  uint32_t m[2] = {z->ve.msg, z->ve1.msg};
+  uint32_t m[2] = {z->ve->msg, z->ve1->msg};
   uint32_t r[L_WORDS][2];
   for (int j = 0; j < L_WORDS; j++) {
-    memcpy(&r[j][0], &z->ve.x[j * 4], sizeof(uint32_t));
-    memcpy(&r[j][1], &z->ve1.x[j * 4], sizeof(uint32_t));
+    memcpy(&r[j][0], &z->ve->x[j * 4], sizeof(uint32_t));
+    memcpy(&r[j][1], &z->ve1->x[j * 4], sizeof(uint32_t));
   }
 
-  if (!mpc_inner_prod_verify(*H, m, r, a->y2p, e)) {
+  if (!mpc_inner_prod_verify(H, m, r, a->y2p, e)) {
     printf("Inner product not verified!\n");
     return false;
   }
@@ -127,13 +159,17 @@ int main(void) {
     z z;
     uint32_t y[8];
 
+    // Pack into one contiguous buffer to write once
+    ssize_t bufSize = sizeof(a) + sizeof(z) + 2 * sizeof(View);
+    unsigned char *bufWrite = malloc(bufSize);
+
 #pragma omp for
     for (int k = 0; k < NUM_ROUNDS; k++) {
       if (atomic_load(&io_error)) {
         continue;
       }
 
-      if (read_zk_proof_at(file, k, &a, &z) != 0) {
+      if (read_zk_proof_at(file, bufWrite, bufSize, k, &a, &z) != 0) {
         atomic_store(&io_error, true);
       }
 
@@ -147,6 +183,14 @@ int main(void) {
       }
     }
 
+    // clear state
+    free(bufWrite);
+    if (z.ve) {
+      free(z.ve);
+    }
+    if (z.ve1) {
+      free(z.ve1);
+    }
 #pragma omp single nowait
     print_message(y);
   }
