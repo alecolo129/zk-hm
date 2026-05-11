@@ -38,20 +38,20 @@ inline void mpc_RIGHTSHIFT(uint32_t x[3], int i, uint32_t z[3]) {
 }
 
 void mpc_AND(uint32_t x[3], uint32_t y[3], uint32_t z[3],
-                  unsigned char *randomness[3], int *randCount,
-                  uint32_t *y_views[3], int *countY);
+             unsigned char *randomness[3], int *randCount, uint32_t *y_views[3],
+             int *countY);
 
 void mpc_ADD(uint32_t x[3], uint32_t y[3], uint32_t z[3],
-                  unsigned char *randomness[3], int *randCount,
-                  uint32_t *y_views[3], int *countY);
+             unsigned char *randomness[3], int *randCount, uint32_t *y_views[3],
+             int *countY);
 
 void mpc_MAJ(uint32_t a[], uint32_t b[3], uint32_t c[3], uint32_t z[3],
-                  unsigned char *randomness[3], int *randCount,
-                  uint32_t *y_views[3], int *countY);
+             unsigned char *randomness[3], int *randCount, uint32_t *y_views[3],
+             int *countY);
 
 void mpc_CH(uint32_t e[], uint32_t f[3], uint32_t g[3], uint32_t z[3],
-                 unsigned char *randomness[3], int *randCount,
-                 uint32_t *y_views[3], int *countY);
+            unsigned char *randomness[3], int *randCount, uint32_t *y_views[3],
+            int *countY);
 
 inline void mpc_ADDK_impl(uint32_t x[3], uint32_t y, uint32_t z[3],
                           unsigned char *randomness[3], int *randCount,
@@ -70,20 +70,20 @@ inline void mpc_RIGHTSHIFT2(uint32_t x[2], int i, uint32_t z[2]) {
   z[1] = x[1] >> i;
 }
 
-int mpc_AND_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View ve,
-                          View ve1, unsigned char randomness[2][RAND_BYTES],
-                          int *randCount, int *countY);
+int mpc_AND_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View *ve,
+                   View *ve1, unsigned char randomness[2][RAND_BYTES],
+                   int *randCount, int *countY);
 
-int mpc_ADD_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View ve,
-                   View ve1, unsigned char randomness[2][RAND_BYTES],
+int mpc_ADD_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View *ve,
+                   View *ve1, unsigned char randomness[2][RAND_BYTES],
                    int *randCount, int *countY);
 
 int mpc_MAJ_verify(uint32_t a[2], uint32_t b[2], uint32_t c[2], uint32_t z[3],
-                   View ve, View ve1, unsigned char randomness[2][RAND_BYTES],
+                   View *ve, View *ve1, unsigned char randomness[2][RAND_BYTES],
                    int *randCount, int *countY);
 
 inline int mpc_CH_verify(uint32_t e[2], uint32_t f[2], uint32_t g[2],
-                         uint32_t z[2], View ve, View ve1,
+                         uint32_t z[2], View *ve, View *ve1,
                          unsigned char randomness[2][RAND_BYTES],
                          int *randCount, int *countY) {
 

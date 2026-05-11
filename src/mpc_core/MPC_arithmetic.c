@@ -89,8 +89,8 @@ void mpc_AND(uint32_t x[3], uint32_t y[3], uint32_t z[3],
 
 
 
-int mpc_AND_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View ve,
-                          View ve1, unsigned char randomness[2][RAND_BYTES],
+int mpc_AND_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View *ve,
+                          View *ve1, unsigned char randomness[2][RAND_BYTES],
                           int *randCount, int *countY) {
   uint32_t r[2] = {getRandom32(randomness[0], *randCount),
                    getRandom32(randomness[1], *randCount)};
@@ -99,18 +99,18 @@ int mpc_AND_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View ve,
   uint32_t t = 0;
 
   t = (x[0] & y[1]) ^ (x[1] & y[0]) ^ (x[0] & y[0]) ^ r[0] ^ r[1];
-  if (ve.y[*countY] != t) {
+  if (ve->y[*countY] != t) {
     return 1;
   }
   z[0] = t;
-  z[1] = ve1.y[*countY];
+  z[1] = ve1->y[*countY];
 
   (*countY)++;
   return 0;
 }
 
-int mpc_ADD_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View ve,
-                   View ve1, unsigned char randomness[2][RAND_BYTES],
+int mpc_ADD_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View *ve,
+                   View *ve1, unsigned char randomness[2][RAND_BYTES],
                    int *randCount, int *countY) {
 
   uint32_t r[2] = {getRandom32(randomness[0], *randCount),
@@ -122,27 +122,27 @@ int mpc_ADD_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View ve,
   uint8_t t;
 
   for (int i = 0; i < 31; i++) {
-    a[0] = GETBIT(x[0] ^ ve.y[*countY], i);
-    a[1] = GETBIT(x[1] ^ ve1.y[*countY], i);
+    a[0] = GETBIT(x[0] ^ ve->y[*countY], i);
+    a[1] = GETBIT(x[1] ^ ve1->y[*countY], i);
 
-    b[0] = GETBIT(y[0] ^ ve.y[*countY], i);
-    b[1] = GETBIT(y[1] ^ ve1.y[*countY], i);
+    b[0] = GETBIT(y[0] ^ ve->y[*countY], i);
+    b[1] = GETBIT(y[1] ^ ve1->y[*countY], i);
 
     t = (a[0] & b[1]) ^ (a[1] & b[0]) ^ GETBIT(r[1], i);
-    if (GETBIT(ve.y[*countY], i + 1) !=
-        (t ^ (a[0] & b[0]) ^ GETBIT(ve.y[*countY], i) ^ GETBIT(r[0], i))) {
+    if (GETBIT(ve->y[*countY], i + 1) !=
+        (t ^ (a[0] & b[0]) ^ GETBIT(ve->y[*countY], i) ^ GETBIT(r[0], i))) {
       return 1;
     }
   }
 
-  z[0] = x[0] ^ y[0] ^ ve.y[*countY];
-  z[1] = x[1] ^ y[1] ^ ve1.y[*countY];
+  z[0] = x[0] ^ y[0] ^ ve->y[*countY];
+  z[1] = x[1] ^ y[1] ^ ve1->y[*countY];
   (*countY)++;
   return 0;
 }
 
 int mpc_MAJ_verify(uint32_t a[2], uint32_t b[2], uint32_t c[2], uint32_t z[3],
-                   View ve, View ve1, unsigned char randomness[2][RAND_BYTES],
+                   View *ve, View *ve1, unsigned char randomness[2][RAND_BYTES],
                    int *randCount, int *countY) {
   uint32_t t0[3];
   uint32_t t1[3];

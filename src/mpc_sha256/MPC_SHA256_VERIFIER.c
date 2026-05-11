@@ -8,20 +8,19 @@
 #include <string.h>
 #define VERBOSE 1
 
-bool verify_hash(a a, int e, z z) {
+bool verify_hash(a *a, int e, z *z) {
 
   unsigned char *hash = malloc(SHA256_DIGEST_LENGTH);
-
-  H(z.ke, &z.ve, z.re, hash);
-  if (memcmp(a.h[e], hash, 32) != 0) {
+  H(z->ke, &z->ve, z->re, hash);
+  if (memcmp(a->h[e], hash, 32) != 0) {
 #if VERBOSE
     printf("Failing at %d", __LINE__);
 #endif
     return false;
   }
 
-  H(z.ke1, &z.ve1, z.re1, hash);
-  if (memcmp(a.h[(e + 1) % 3], hash, 32) != 0) {
+  H(z->ke1, &z->ve1, z->re1, hash);
+  if (memcmp(a->h[(e + 1) % 3], hash, 32) != 0) {
 #if VERBOSE
     printf("Failing at %d", __LINE__);
 #endif
@@ -56,19 +55,19 @@ int verify_hash2(a2 a, int e, z2 z) {
   return 0;
 }
 
-int verify(a a, int e, z z) {
+int verify(a *a, int e, z *z) {
 
   uint32_t *result = malloc(32);
-  output(&z.ve, result);
-  if (memcmp(a.yp[e], result, 32) != 0) {
+  output(&z->ve, result);
+  if (memcmp(a->yp[e], result, 32) != 0) {
 #if VERBOSE
     printf("Failing at %d", __LINE__);
 #endif
     return 1;
   }
 
-  output(&z.ve1, result);
-  if (memcmp(a.yp[(e + 1) % 3], result, 32) != 0) {
+  output(&z->ve1, result);
+  if (memcmp(a->yp[(e + 1) % 3], result, 32) != 0) {
 #if VERBOSE
     printf("Failing at %d", __LINE__);
 #endif
@@ -78,16 +77,16 @@ int verify(a a, int e, z z) {
   free(result);
 
   unsigned char randomness[2][2912 * NUM_SHA256_BLOCKS];
-  getAllRandomness(z.ke, randomness[0]);
-  getAllRandomness(z.ke1, randomness[1]);
+  getAllRandomness(z->ke, randomness[0]);
+  getAllRandomness(z->ke1, randomness[1]);
 
   int *randCount = calloc(1, sizeof(int));
   int *countY = calloc(1, sizeof(int));
 
   const size_t paddedLen = NUM_SHA256_BLOCKS * 64;
   uint8_t *padded[2] = {calloc(paddedLen, 1), calloc(paddedLen, 1)};
-  mempcpy(padded[0], z.ve.x, L_BYTES);
-  mempcpy(padded[1], z.ve1.x, L_BYTES);
+  mempcpy(padded[0], z->ve.x, L_BYTES);
+  mempcpy(padded[1], z->ve1.x, L_BYTES);
 
   // padding
   for (int i = 0; i < 2; i++) {
@@ -129,7 +128,7 @@ int verify(a a, int e, z z) {
       mpc_XOR2(t0, t1, s1);
 
       // w[i][j] = w[i][j-16]+s0[i]+w[i][j-7]+s1[i];
-      if (mpc_ADD_verify(w[j - 16], s0, t1, z.ve, z.ve1, randomness, randCount,
+      if (mpc_ADD_verify(w[j - 16], s0, t1, &z->ve, &z->ve1, randomness, randCount,
                          countY) == 1) {
 #if VERBOSE
         printf("Failing at %d, iteration %d", __LINE__, j);
@@ -137,14 +136,14 @@ int verify(a a, int e, z z) {
         return 1;
       }
 
-      if (mpc_ADD_verify(w[j - 7], t1, t1, z.ve, z.ve1, randomness, randCount,
+      if (mpc_ADD_verify(w[j - 7], t1, t1, &z->ve, &z->ve1, randomness, randCount,
                          countY) == 1) {
 #if VERBOSE
         printf("Failing at %d, iteration %d", __LINE__, j);
 #endif
         return 1;
       }
-      if (mpc_ADD_verify(t1, s1, w[j], z.ve, z.ve1, randomness, randCount,
+      if (mpc_ADD_verify(t1, s1, w[j], &z->ve, &z->ve1, randomness, randCount,
                          countY) == 1) {
 #if VERBOSE
         printf("Failing at %d, iteration %d", __LINE__, j);
@@ -176,7 +175,7 @@ int verify(a a, int e, z z) {
 
       // t0 = h + s1
 
-      if (mpc_ADD_verify(vh, s1, t0, z.ve, z.ve1, randomness, randCount,
+      if (mpc_ADD_verify(vh, s1, t0, &z->ve, &z->ve1, randomness, randCount,
                          countY) == 1) {
 #if VERBOSE
         printf("Failing at %d, iteration %d", __LINE__, i);
@@ -184,7 +183,7 @@ int verify(a a, int e, z z) {
         return 1;
       }
 
-      if (mpc_CH_verify(ve, vf, vg, t1, z.ve, z.ve1, randomness, randCount,
+      if (mpc_CH_verify(ve, vf, vg, t1, &z->ve, &z->ve1, randomness, randCount,
                         countY) == 1) {
 #if VERBOSE
         printf("Failing at %d, iteration %d", __LINE__, i);
@@ -193,7 +192,7 @@ int verify(a a, int e, z z) {
       }
 
       // t1 = t0 + t1 (h+s1+ch)
-      if (mpc_ADD_verify(t0, t1, t1, z.ve, z.ve1, randomness, randCount,
+      if (mpc_ADD_verify(t0, t1, t1, &z->ve, &z->ve1, randomness, randCount,
                          countY) == 1) {
 #if VERBOSE
         printf("Failing at %d, iteration %d", __LINE__, i);
@@ -203,7 +202,7 @@ int verify(a a, int e, z z) {
 
       t0[0] = k[i];
       t0[1] = k[i];
-      if (mpc_ADD_verify(t1, t0, t1, z.ve, z.ve1, randomness, randCount,
+      if (mpc_ADD_verify(t1, t0, t1, &z->ve, &z->ve1, randomness, randCount,
                          countY) == 1) {
 #if VERBOSE
         printf("Failing at %d, iteration %d", __LINE__, i);
@@ -211,7 +210,7 @@ int verify(a a, int e, z z) {
         return 1;
       }
 
-      if (mpc_ADD_verify(t1, w[i], temp1, z.ve, z.ve1, randomness, randCount,
+      if (mpc_ADD_verify(t1, w[i], temp1, &z->ve, &z->ve1, randomness, randCount,
                          countY) == 1) {
 #if VERBOSE
         printf("Failing at %d, iteration %d", __LINE__, i);
@@ -229,7 +228,7 @@ int verify(a a, int e, z z) {
       // maj = (a & (b ^ c)) ^ (b & c);
       //(a & b) ^ (a & c) ^ (b & c)
 
-      if (mpc_MAJ_verify(va, vb, vc, maj, z.ve, z.ve1, randomness, randCount,
+      if (mpc_MAJ_verify(va, vb, vc, maj, &z->ve, &z->ve1, randomness, randCount,
                          countY) == 1) {
 #if VERBOSE
         printf("Failing at %d, iteration %d", __LINE__, i);
@@ -238,7 +237,7 @@ int verify(a a, int e, z z) {
       }
 
       // temp2 = s0+maj;
-      if (mpc_ADD_verify(s0, maj, temp2, z.ve, z.ve1, randomness, randCount,
+      if (mpc_ADD_verify(s0, maj, temp2, &z->ve, &z->ve1, randomness, randCount,
                          countY) == 1) {
 #if VERBOSE
         printf("Failing at %d, iteration %d", __LINE__, i);
@@ -250,7 +249,7 @@ int verify(a a, int e, z z) {
       memcpy(vg, vf, sizeof(vg));
       memcpy(vf, ve, sizeof(vf));
       // e = d+temp1;
-      if (mpc_ADD_verify(vd, temp1, ve, z.ve, z.ve1, randomness, randCount,
+      if (mpc_ADD_verify(vd, temp1, ve, &z->ve, &z->ve1, randomness, randCount,
                          countY) == 1) {
 #if VERBOSE
         printf("Failing at %d, iteration %d", __LINE__, i);
@@ -263,7 +262,7 @@ int verify(a a, int e, z z) {
       memcpy(vb, va, sizeof(vb));
       // a = temp1+temp2;
 
-      if (mpc_ADD_verify(temp1, temp2, va, z.ve, z.ve1, randomness, randCount,
+      if (mpc_ADD_verify(temp1, temp2, va, &z->ve, &z->ve1, randomness, randCount,
                          countY) == 1) {
 #if VERBOSE
         printf("Failing at %d, iteration %d", __LINE__, i);
@@ -272,56 +271,56 @@ int verify(a a, int e, z z) {
       }
     }
 
-    if (mpc_ADD_verify(H[0], va, H[0], z.ve, z.ve1, randomness, randCount,
+    if (mpc_ADD_verify(H[0], va, H[0], &z->ve, &z->ve1, randomness, randCount,
                        countY) == 1) {
 #if VERBOSE
       printf("Failing at %d", __LINE__);
 #endif
       return 1;
     }
-    if (mpc_ADD_verify(H[1], vb, H[1], z.ve, z.ve1, randomness, randCount,
+    if (mpc_ADD_verify(H[1], vb, H[1], &z->ve, &z->ve1, randomness, randCount,
                        countY) == 1) {
 #if VERBOSE
       printf("Failing at %d", __LINE__);
 #endif
       return 1;
     }
-    if (mpc_ADD_verify(H[2], vc, H[2], z.ve, z.ve1, randomness, randCount,
+    if (mpc_ADD_verify(H[2], vc, H[2], &z->ve, &z->ve1, randomness, randCount,
                        countY) == 1) {
 #if VERBOSE
       printf("Failing at %d", __LINE__);
 #endif
       return 1;
     }
-    if (mpc_ADD_verify(H[3], vd, H[3], z.ve, z.ve1, randomness, randCount,
+    if (mpc_ADD_verify(H[3], vd, H[3], &z->ve, &z->ve1, randomness, randCount,
                        countY) == 1) {
 #if VERBOSE
       printf("Failing at %d", __LINE__);
 #endif
       return 1;
     }
-    if (mpc_ADD_verify(H[4], ve, H[4], z.ve, z.ve1, randomness, randCount,
+    if (mpc_ADD_verify(H[4], ve, H[4], &z->ve, &z->ve1, randomness, randCount,
                        countY) == 1) {
 #if VERBOSE
       printf("Failing at %d", __LINE__);
 #endif
       return 1;
     }
-    if (mpc_ADD_verify(H[5], vf, H[5], z.ve, z.ve1, randomness, randCount,
+    if (mpc_ADD_verify(H[5], vf, H[5], &z->ve, &z->ve1, randomness, randCount,
                        countY) == 1) {
 #if VERBOSE
       printf("Failing at %d", __LINE__);
 #endif
       return 1;
     }
-    if (mpc_ADD_verify(H[6], vg, H[6], z.ve, z.ve1, randomness, randCount,
+    if (mpc_ADD_verify(H[6], vg, H[6], &z->ve, &z->ve1, randomness, randCount,
                        countY) == 1) {
 #if VERBOSE
       printf("Failing at %d", __LINE__);
 #endif
       return 1;
     }
-    if (mpc_ADD_verify(H[7], vh, H[7], z.ve, z.ve1, randomness, randCount,
+    if (mpc_ADD_verify(H[7], vh, H[7], &z->ve, &z->ve1, randomness, randCount,
                        countY) == 1) {
 #if VERBOSE
       printf("Failing at %d", __LINE__);
@@ -331,7 +330,7 @@ int verify(a a, int e, z z) {
   }
 
   for (int i = 0; i < 8; i++) {
-    if ((H[i][0] != a.yp[e][i]) || (H[i][1] != a.yp[(e + 1) % 3][i])) {
+    if ((H[i][0] != a->yp[e][i]) || (H[i][1] != a->yp[(e + 1) % 3][i])) {
 #if VERBOSE
       printf("Failing at %d", __LINE__);
 #endif
