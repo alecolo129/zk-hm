@@ -170,7 +170,7 @@ void H(unsigned char k[16], View *v, unsigned char r[4],
 void H2(unsigned char k[16], View2 v, unsigned char r[4],
         unsigned char hash[SHA256_DIGEST_LENGTH]);
 
-void H3(uint32_t y[8], a *as, int s, const UniversalHash h, int *es);
+void H3(uint32_t y[8], a *as, int s, const UniversalHash *h, int *es);
 void H3_2(uint32_t y[8], a2 *as, int s, int *es);
 
 /* Helper: write 64-bit big-endian */

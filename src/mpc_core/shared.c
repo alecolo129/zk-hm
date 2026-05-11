@@ -109,14 +109,14 @@ void H2(unsigned char k[16], View2 v, unsigned char r[4],
   EVP_MD_CTX_free(ctx);
 }
 
-void H3(uint32_t y[8], a *as, int s, const UniversalHash h, int *es) {
+void H3(uint32_t y[8], a *as, int s, const UniversalHash* h, int *es) {
 
   unsigned char hash[SHA256_DIGEST_LENGTH];
   EVP_MD_CTX *ctx = setupSHA256();
   EVP_DigestUpdate(ctx, y, 32);
   EVP_DigestUpdate(ctx, as, sizeof(a) * s);
-  EVP_DigestUpdate(ctx, h.A, L_BYTES);
-  EVP_DigestUpdate(ctx, &h.b, sizeof(h.b));
+  EVP_DigestUpdate(ctx, h->A, sizeof(h->A));
+  EVP_DigestUpdate(ctx, &h->b, sizeof(h->b));
   uint32_t outlen = 0;
   EVP_DigestFinal_ex(ctx, hash, &outlen);
 
