@@ -56,7 +56,7 @@ void bytes_to_hex(char out[65], const uint8_t in[32]) {
 }
 
 void test_vector(const unsigned char *msg, const char *expected_hex,
-                 unsigned char *randomness[3], uint8_t rs[3][4], View views[3],
+                 unsigned char *randomness[3], uint8_t rs[3][4], View *views[3],
                  int *countY) {
 
   unsigned char shares[3][L_BYTES];
@@ -65,8 +65,8 @@ void test_vector(const unsigned char *msg, const char *expected_hex,
   commit(shares, randomness, rs, views);
 
   uint32_t digest[8];
-  xor3_digest(digest, &views[0].y[ySize - 8], &views[1].y[ySize - 8],
-              &views[2].y[ySize - 8]);
+  xor3_digest(digest, &views[0]->y[ySize - 8], &views[1]->y[ySize - 8],
+              &views[2]->y[ySize - 8]);
 
   unsigned char digestChar[32] = {0};
   for (int i = 0; i < 8; i++) {
@@ -86,7 +86,8 @@ void test_vector(const unsigned char *msg, const char *expected_hex,
 int main() {
   srand((unsigned)time(NULL));
 
-  View views[3];
+  View *views[3] = {malloc(sizeof(View)), malloc(sizeof(View)),
+                    malloc(sizeof(View))};
   int countY = 0;
 
   unsigned char *randomness[3] = {malloc(RAND_BYTES), malloc(RAND_BYTES),
