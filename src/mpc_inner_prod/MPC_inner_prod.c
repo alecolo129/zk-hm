@@ -64,6 +64,7 @@ void generate_H(uint32_t A[L_WORDS], uint8_t *b, const uint8_t keyH[16],
 void mpc_inner_prod_prover(const UniversalHash h, const uint32_t m[3],
                            const uint32_t r[L_WORDS][3], uint32_t y[3]) {
   uint32_t t1[3] = {0};
+  memset(y, 0, 3*sizeof(uint32_t));
   for (int i = 0; i < L_WORDS; i++) {
     mpc_ANDK(r[i], h.A[i], t1);
     mpc_XOR(y, t1, y);
