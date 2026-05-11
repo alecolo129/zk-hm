@@ -3,22 +3,16 @@
 #include "omp.h"
 #include "shared.h"
 #include <bits/time.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
 #include <time.h>
+#include <unistd.h>
 
-static double totalCrypto = 0;
-static double totalRandom = 0;
-static double totalHM = 0;
-static double totalSS = 0;
-static double totalHash = 0;
-
-static double inMilliA = 0;
-static double inMilliE = 0;
-static double inMilliZ = 0;
-static double inMilliWrite = 0;
 static double inMilli = 0;
 
 void test_randomness() {
@@ -45,24 +39,6 @@ static inline void update_clock(double beginClock, double *clockToUpdate) {
 }
 
 void print_runtime(const char *outputFile) {
-
-  double sumOfParts = 0;
-
-  printf("Generating A: %f\n", inMilliA);
-  printf("	Generating keys: %f\n", totalCrypto);
-  sumOfParts += totalCrypto;
-  printf("	Generating randomness: %f\n", totalRandom);
-  sumOfParts += totalRandom;
-  printf("	Sharing secrets: %f\n", totalSS);
-  sumOfParts += totalSS;
-  printf("	Running MPC-HM: %f\n", totalHM);
-  sumOfParts += totalHM;
-  printf("	Committing: %f\n", totalHash);
-  sumOfParts += totalHash;
-  printf("	*Accounted for*: %f\n", sumOfParts);
-  printf("Generating E: %f\n", inMilliE);
-  printf("Packing Z: %f\n", inMilliZ);
-  printf("Writing file: %f\n", inMilliWrite);
   printf("Total: %f\n", inMilli);
   printf("\n");
   printf("Proof output to file %s\n", outputFile);
@@ -126,7 +102,6 @@ void mpc_halevi_micali_prover(View localViews[3], a *as, uint8_t *randomness[3],
   localViews[0].msg = msgShares[0];
   localViews[1].msg = msgShares[1];
   localViews[2].msg = msgShares[2];
-
   mpc_inner_prod_prover(h, msgShares, rWords, as->y2p);
 }
 
@@ -141,13 +116,12 @@ void hash_views(uint8_t keys[3][16], uint8_t rs[3][4], View localViews[3],
   memcpy(as->h[2], &hash1, 32);
 }
 
-void generate_challenge(a as[NUM_ROUNDS], int es[NUM_ROUNDS],
-                        const UniversalHash h) {
+void generate_challenge(a *a, int *e, const UniversalHash *h) {
   uint32_t finalHash[8];
   for (int j = 0; j < 8; j++) {
-    finalHash[j] = as[0].yp[0][j] ^ as[0].yp[1][j] ^ as[0].yp[2][j];
+    finalHash[j] = a->yp[0][j] ^ a->yp[1][j] ^ a->yp[2][j];
   }
-  H3(finalHash, as, NUM_ROUNDS, h, es);
+  H3(finalHash, a, 1, h, e);
 }
 
 void pick_universal_hash(UniversalHash *h, const uint8_t keyA[16],
@@ -157,27 +131,35 @@ void pick_universal_hash(UniversalHash *h, const uint8_t keyA[16],
   generate_H(h->A, &h->b, keyA, msg, rWords);
 }
 
-void write_to_file(char outputFile[3 * sizeof(int) + 8], const a as[NUM_ROUNDS],
-                   const z *zs, const uint8_t keyA[16], const UniversalHash h) {
-  FILE *file;
+void serialize_universal_hash(FILE *f, const uint8_t keyH[16],
+                              const UniversalHash *H) {
+  // Pack into one contiguous buffer to write once
+  unsigned char buf[16 + sizeof(H->b)];
+  memcpy(buf, keyH, 16);
+  memcpy(buf + 16, &H->b, sizeof(H->b));
 
-  sprintf(outputFile, "out%i.bin", NUM_ROUNDS);
-  file = fopen(outputFile, "wb");
-  if (!file) {
-    printf("Unable to open file!");
+  uint32_t nWrite = fwrite(buf, 1, 16 + sizeof(H->b), f);
+  if (nWrite != 16 + sizeof(H->b)) {
+    fclose(f);
+    fprintf(stderr, "Failed to serialize Universal Hash!\n");
     exit(EXIT_FAILURE);
   }
+}
 
-  uint32_t nWrite = fwrite(keyA, 16, 1, file);
-  nWrite += fwrite(&h.b, sizeof(h.b), 1, file);
-  nWrite += fwrite(as, sizeof(a), NUM_ROUNDS, file);
-  nWrite += fwrite(zs, sizeof(z), NUM_ROUNDS, file);
-  fclose(file);
+int serialize_zk_proof_at(FILE *f, int k, const a *a_ptr, const z *z_ptr) {
+  off_t initial_offset =
+      16 + 1; // TODO: this should not depend on H.b being 1 byte
 
-  if (nWrite != 2 * NUM_ROUNDS + 2) {
-    printf("Failed to write proof!\n");
-    exit(EXIT_FAILURE);
-  }
+  // Pack into one contiguous buffer to write once
+  unsigned char buf[sizeof(*a_ptr) + sizeof(*z_ptr)];
+  memcpy(buf, a_ptr, sizeof(*a_ptr));
+  memcpy(buf + sizeof(*a_ptr), z_ptr, sizeof(*z_ptr));
+
+  int fd = fileno(f);
+  off_t off = initial_offset + (off_t)k * sizeof(buf);
+
+  ssize_t nWrite = pwrite(fd, buf, sizeof(buf), off);
+  return (nWrite == (ssize_t)sizeof(buf)) ? 0 : -1;
 }
 
 static void init_randomness(uint8_t *randomness[3]) {
@@ -207,78 +189,81 @@ int main(void) {
   printf("Iterations of SHA: %d\n", NUM_ROUNDS);
 
   double begin = omp_get_wtime();
-  uint8_t rs[NUM_ROUNDS][3][4];    // randomness internal commitments for NIZKP:
-                                   // NUM_ROUNDS rounds * 3 parties * 32bits
-  uint8_t keys[NUM_ROUNDS][3][16]; // NUM_ROUNDS rounds * 3 parties * 128bits
-  uint8_t keyH[16];                // key to generate universal hash function
-  a as[NUM_ROUNDS]; // containes 32 bytes ouput for each view and the
-                    // commitments to the views
-  View localViews[NUM_ROUNDS][3];
+  uint8_t rs[NUM_ROUNDS][3][4]; // randomness internal commitments to views
+  uint8_t keys[NUM_ROUNDS][3]
+              [16]; // PRG keys to generate randomness for MPC protocol
+  uint8_t keyH[16]; // key to generate universal hash function
 
   // Generating keys
-  double beginCrypto = omp_get_wtime();
   generate_keys_and_rs(keys, keyH, rs);
   UniversalHash h;
   pick_universal_hash(&h, keyH, rBytes, msg); // pick universal hash function
-  update_clock(beginCrypto, &totalCrypto);
+
+  char outputFile[3 * sizeof(int) + 8];
+  sprintf(outputFile, "out%i.bin", NUM_ROUNDS);
+  FILE *file = fopen(outputFile, "wb");
+  if (!file) {
+    fprintf(stderr, "Unable to open file!");
+    exit(EXIT_FAILURE);
+  }
+  serialize_universal_hash(file, keyH, &h);
+
+  atomic_int io_error = 0;
 
 #pragma omp parallel
   {
     // Init thread state
-    uint32_t msgShares[3];
-    uint8_t rShares[3][L_BYTES];
+    uint8_t rShares[3][L_BYTES] = {0};
+    uint32_t msgShares[3] = {0};
     uint8_t *randomness[3] = {0};
+    View localView[3];
+
+    int e;
     init_randomness(randomness);
+    a a; // containes 32 bytes ouput for each view and the
+    // commitments to the views
+    z z;
 #pragma omp for
     for (int k = 0; k < NUM_ROUNDS; k++) {
+      if (atomic_load(&io_error))
+        continue;
+
       // Sharing secrets
       share_secrets(rShares, msgShares, rBytes, msg);
       // Generating randomness i.e., random tapes
       generate_randomness(keys[k], randomness);
       // Running HM commitment
-      mpc_halevi_micali_prover(localViews[k], &as[k], randomness, rs[k], h,
-                               rShares, msgShares);
+      mpc_halevi_micali_prover(localView, &a, randomness, rs[k], h, rShares,
+                               msgShares);
       // Committing
-      hash_views(keys[k], rs[k], localViews[k], &as[k]);
+      hash_views(keys[k], rs[k], localView, &a);
+
+      // Generating E
+      //  Note: E is the challenge that determines which 2 of the 3 views must
+      //  be opened.
+      generate_challenge(&a, &e, &h);
+
+      z = prove(e, keys[k], rs[k], localView);
+
+      if (serialize_zk_proof_at(file, k, &a, &z) != 0) {
+        atomic_store(&io_error, 1);
+      }
     }
 
     // Release thread state
     free_randomness(randomness);
   }
-  update_clock(begin, &inMilliA);
 
-  // Generating E
-  //  Note: E is the challenge that determines which 2 of the 3 views must be
-  //  opened.
-  double beginE = omp_get_wtime();
-  int es[NUM_ROUNDS];
-  generate_challenge(as, es, h);
-  update_clock(beginE, &inMilliE);
-
-  // Packing Z
-  double beginZ = omp_get_wtime();
-  z *zs = malloc(sizeof(z) * NUM_ROUNDS);
-
-// Generate proof
-#pragma omp parallel for
-  for (int i = 0; i < NUM_ROUNDS; i++) {
-    // create proof struct with view, key and randomness for parties es[i],
-    // es[i]+1%3
-    zs[i] = prove(es[i], keys[i], rs[i], localViews[i]);
+  if (io_error) {
+    fprintf(stderr, "Failed to serialize zk proof!\n");
+    fclose(file);
+    cleanup();
+    exit(EXIT_FAILURE);
   }
-  update_clock(beginZ, &inMilliZ);
-
-  // Writing to file
-  double beginWrite = omp_get_wtime();
-  char outputFile[3 * sizeof(int) + 8];
-  write_to_file(outputFile, as, zs, keyH, h);
-  update_clock(beginWrite, &inMilliWrite);
-
-  free(zs);
 
   update_clock(begin, &inMilli);
+  fclose(file);
   print_runtime(outputFile);
-  cleanup();
 
   return EXIT_SUCCESS;
 }
