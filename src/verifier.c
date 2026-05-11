@@ -9,12 +9,17 @@
 #include "MPC_SHA256_VERIFIER.h"
 #include "MPC_inner_prod.h"
 #include "shared.h"
+#include <bits/pthreadtypes.h>
+#include <omp.h>
+#include <pthread.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 void printbits(uint32_t n) {
   if (n) {
@@ -23,47 +28,81 @@ void printbits(uint32_t n) {
   }
 }
 
-bool mpc_halevi_micali_verifier(UniversalHash H, a as[NUM_ROUNDS],
-                                z zs[NUM_ROUNDS], int es[NUM_ROUNDS]) {
-  atomic_bool verified = true;
-#pragma omp parallel for
-  for (int i = 0; i < NUM_ROUNDS; i++) {
-    if (!verify_hash(as[i], es[i], zs[i])) {
-      printf("(%d) Commitment not verified!\n", i);
-      verified = false;
-    }
-    if (verify(as[i], es[i], zs[i]) != 0) {
-      printf("(%d) SHA256 not verified!\n", i);
-      verified = false;
-    }
+static inline void update_clock(double beginClock, double *clockToUpdate) {
+  double deltaT = (omp_get_wtime() - beginClock) * 1000;
+  *clockToUpdate += deltaT;
+}
 
-    uint32_t m[2] = {zs[i].ve.msg, zs[i].ve1.msg};
-    uint32_t r[L_WORDS][2];
-    for (int j = 0; j < L_WORDS; j++) {
-      memcpy(&r[j][0], &zs[i].ve.x[j * 4], sizeof(uint32_t));
-      memcpy(&r[j][1], &zs[i].ve1.x[j * 4], sizeof(uint32_t));
-    }
+int read_hash(FILE *f, uint8_t keyH[16], UniversalHash *H) {
+  unsigned char buf[16 + sizeof(H->b)];
 
-    if (!mpc_inner_prod_verify(H, m, r, as[i].y2p, es[i])) {
-      printf("(%d) Inner product not verified!\n", i);
-      verified = false;
-    }
+  unsigned long nRead = fread(buf, 1, sizeof(buf), f);
+  if (nRead == sizeof(buf)) {
+    memcpy(keyH, buf, 16);
+    memcpy(&H->b, buf + 16, sizeof(H->b));
   }
-  return verified;
+  return (nRead == sizeof(buf) ? 0 : -1);
+}
+
+int read_zk_proof_at(FILE *f, int k, a *a_ptr, z *z_ptr) {
+  off_t initial_offset =
+      16 + 1; // TODO: this should not depend on H.b being 1 byte
+  unsigned char buf[sizeof(*a_ptr) + sizeof(*z_ptr)];
+
+  int fd = fileno(f);
+  off_t off = initial_offset + (off_t)k * sizeof(buf);
+  ssize_t nRead = pread(fd, buf, sizeof(buf), off);
+  if (nRead == sizeof(buf)) {
+    memcpy(a_ptr, buf, sizeof(*a_ptr));
+    memcpy(z_ptr, buf + sizeof(*a_ptr), sizeof(*z_ptr));
+  }
+  return (nRead == (ssize_t)sizeof(buf) ? 0 : -1);
+}
+
+bool mpc_halevi_micali_verifier(UniversalHash *H, a *a, z *z, int e) {
+
+  if (!verify_hash(a, e, z)) {
+    printf("Commitment not verified!\n");
+    return false;
+  }
+  if (verify(a, e, z) != 0) {
+    printf("SHA256 not verified!\n");
+    return false;
+  }
+
+  uint32_t m[2] = {z->ve.msg, z->ve1.msg};
+  uint32_t r[L_WORDS][2];
+  for (int j = 0; j < L_WORDS; j++) {
+    memcpy(&r[j][0], &z->ve.x[j * 4], sizeof(uint32_t));
+    memcpy(&r[j][1], &z->ve1.x[j * 4], sizeof(uint32_t));
+  }
+
+  if (!mpc_inner_prod_verify(*H, m, r, a->y2p, e)) {
+    printf("Inner product not verified!\n");
+    return false;
+  }
+  return true;
+}
+
+void print_message(uint32_t y[8]) {
+  printf("Proof for hash: ");
+  for (int i = 0; i < 8; i++) {
+    printf("%02X", y[i]);
+  }
+  printf("\n");
 }
 
 int main(void) {
   setbuf(stdout, NULL);
   openmp_thread_setup();
-
   printf("Iterations of SHA: %d\n", NUM_ROUNDS);
 
-  clock_t begin = clock(), delta, deltaFiles;
+  static double inMilli = 0;
+
+  double begin = omp_get_wtime();
 
   UniversalHash h;
   uint8_t keyA[16];
-  a as[NUM_ROUNDS];
-  z zs[NUM_ROUNDS];
   FILE *file;
 
   char outputFile[3 * sizeof(int) + 8];
@@ -73,49 +112,49 @@ int main(void) {
     printf("Unable to open file!");
     exit(EXIT_FAILURE);
   }
-  int nRead = 0;
-  nRead += fread(keyA, sizeof(keyA), 1, file);
-  nRead += fread(&h.b, sizeof(h.b), 1, file);
-  nRead += fread(&as, sizeof(a), NUM_ROUNDS, file);
-  nRead += fread(&zs, sizeof(z), NUM_ROUNDS, file);
 
-  fclose(file);
-  if (nRead != 2 * NUM_ROUNDS + 2) {
-    printf("Unable to parse proof!\n");
+  if (read_hash(file, keyA, &h) != 0) {
+    fprintf(stderr, "Unable to parse proof!\n");
     exit(EXIT_FAILURE);
   }
-
   expand_A(h.A, keyA);
-  uint32_t y[8];
-  reconstruct(as[0].yp[0], as[0].yp[1], as[0].yp[2], y);
-  printf("Proof for hash: ");
-  for (int i = 0; i < 8; i++) {
-    printf("%02X", y[i]);
+
+  atomic_int io_error = 0;
+#pragma omp parallel
+  {
+    // Init thread state
+    a a;
+    z z;
+    uint32_t y[8];
+
+#pragma omp for
+    for (int k = 0; k < NUM_ROUNDS; k++) {
+      if (atomic_load(&io_error)) {
+        continue;
+      }
+
+      if (read_zk_proof_at(file, k, &a, &z) != 0) {
+        atomic_store(&io_error, true);
+      }
+
+      reconstruct(a.yp[0], a.yp[1], a.yp[2], y);
+
+      int e;
+      H3(y, &a, 1, &h, &e);
+      if (!mpc_halevi_micali_verifier(&h, &a, &z, e)) {
+        printf("(%d) failed\n", k);
+        exit(EXIT_FAILURE);
+      }
+    }
+
+#pragma omp single nowait
+    print_message(y);
   }
-  printf("\n");
-
-  deltaFiles = clock() - begin;
-  int inMilliFiles = deltaFiles * 1000 / CLOCKS_PER_SEC;
-  printf("Loading files: %ju\n", (uintmax_t)inMilliFiles);
-
-  clock_t beginE = clock(), deltaE;
-  int es[NUM_ROUNDS];
-  H3(y, as, NUM_ROUNDS, h, es);
-  deltaE = clock() - beginE;
-  int inMilliE = deltaE * 1000 / CLOCKS_PER_SEC;
-  printf("Generating E: %ju\n", (uintmax_t)inMilliE);
-
-  clock_t beginV = clock(), deltaV;
-  mpc_halevi_micali_verifier(h, as, zs, es);
-  deltaV = clock() - beginV;
-  int inMilliV = deltaV * 1000 / CLOCKS_PER_SEC;
-  printf("Verifying: %ju\n", (uintmax_t)inMilliV);
-
-  delta = clock() - begin;
-  int inMilli = delta * 1000 / CLOCKS_PER_SEC;
+  update_clock(begin, &inMilli);
 
   printf("Total time: %ju\n", (uintmax_t)inMilli);
 
+  fclose(file);
   openmp_thread_cleanup();
   return EXIT_SUCCESS;
 }
