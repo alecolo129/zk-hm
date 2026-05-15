@@ -151,6 +151,10 @@ int main(void) {
   }
   expand_A(h.A, keyA);
 
+  EVP_MD_CTX *base_ctx = setupSHA256();
+  EVP_DigestUpdate(base_ctx, h.A, sizeof(h.A));
+  EVP_DigestUpdate(base_ctx, &h.b, sizeof(h.b));
+
   atomic_int io_error = 0;
 #pragma omp parallel
   {
@@ -158,6 +162,7 @@ int main(void) {
     a a;
     z z;
     uint32_t y[8];
+    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
 
     // Pack into one contiguous buffer to write once
     ssize_t bufSize = sizeof(a) + sizeof(z) + 2 * sizeof(View);
@@ -176,7 +181,8 @@ int main(void) {
       reconstruct(a.yp[0], a.yp[1], a.yp[2], y);
 
       int e;
-      H3(y, &a, 1, &h, &e);
+      EVP_MD_CTX_copy_ex(ctx, base_ctx);
+      H3(ctx, y, &a, 1, &e);
       if (!mpc_halevi_micali_verifier(&h, &a, &z, e)) {
         printf("(%d) failed\n", k);
         exit(EXIT_FAILURE);

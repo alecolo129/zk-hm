@@ -98,6 +98,16 @@ void H(unsigned char k[16], View *v, unsigned char r[4],
   EVP_MD_CTX_free(ctx);
 }
 
+void HH(EVP_MD_CTX *ctx, unsigned char k[16], View *v, unsigned char r[4],
+       unsigned char hash[SHA256_DIGEST_LENGTH]) {
+  EVP_DigestInit_ex(ctx, EVP_sha256(), NULL);
+  EVP_DigestUpdate(ctx, k, 16);
+  EVP_DigestUpdate(ctx, v, sizeof(View));
+  EVP_DigestUpdate(ctx, r, 4);
+  uint32_t outlen = 0;
+  EVP_DigestFinal_ex(ctx, hash, &outlen);
+}
+
 void H2(unsigned char k[16], View2 v, unsigned char r[4],
         unsigned char hash[SHA256_DIGEST_LENGTH]) {
   EVP_MD_CTX *ctx = setupSHA256();
@@ -109,14 +119,10 @@ void H2(unsigned char k[16], View2 v, unsigned char r[4],
   EVP_MD_CTX_free(ctx);
 }
 
-void H3(uint32_t y[8], a *as, int s, const UniversalHash* h, int *es) {
-
+void H3(EVP_MD_CTX *ctx, uint32_t y[8], a *as, int s, int *es) {
   unsigned char hash[SHA256_DIGEST_LENGTH];
-  EVP_MD_CTX *ctx = setupSHA256();
   EVP_DigestUpdate(ctx, y, 32);
   EVP_DigestUpdate(ctx, as, sizeof(a) * s);
-  EVP_DigestUpdate(ctx, h->A, sizeof(h->A));
-  EVP_DigestUpdate(ctx, &h->b, sizeof(h->b));
   uint32_t outlen = 0;
   EVP_DigestFinal_ex(ctx, hash, &outlen);
 
@@ -155,7 +161,6 @@ void H3(uint32_t y[8], a *as, int s, const UniversalHash* h, int *es) {
       }
     }
   }
-  EVP_MD_CTX_free(ctx);
 }
 
 void H3_2(uint32_t y[8], a2 *as, int s, int *es) {

@@ -90,7 +90,7 @@ void mpc_AND(uint32_t x[3], uint32_t y[3], uint32_t z[3],
 
 
 int mpc_AND_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View *ve,
-                          View *ve1, unsigned char randomness[2][RAND_BYTES],
+                          View *ve1, unsigned char *randomness[2],
                           int *randCount, int *countY) {
   uint32_t r[2] = {getRandom32(randomness[0], *randCount),
                    getRandom32(randomness[1], *randCount)};
@@ -110,7 +110,7 @@ int mpc_AND_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View *ve,
 }
 
 int mpc_ADD_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View *ve,
-                   View *ve1, unsigned char randomness[2][RAND_BYTES],
+                   View *ve1, unsigned char *randomness[2],
                    int *randCount, int *countY) {
 
   uint32_t r[2] = {getRandom32(randomness[0], *randCount),
@@ -142,7 +142,7 @@ int mpc_ADD_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View *ve,
 }
 
 int mpc_MAJ_verify(uint32_t a[2], uint32_t b[2], uint32_t c[2], uint32_t z[3],
-                   View *ve, View *ve1, unsigned char randomness[2][RAND_BYTES],
+                   View *ve, View *ve1, unsigned char *randomness[2],
                    int *randCount, int *countY) {
   uint32_t t0[3];
   uint32_t t1[3];

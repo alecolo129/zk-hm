@@ -3,6 +3,7 @@
 #include "omp.h"
 #include "shared.h"
 #include <bits/time.h>
+#include <openssl/evp.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -106,23 +107,23 @@ void mpc_halevi_micali_prover(View *localViews[3], a *as,
   mpc_inner_prod_prover(h, msgShares, rWords, as->y2p);
 }
 
-void hash_views(uint8_t keys[3][16], uint8_t rs[3][4], View *localViews[3],
-                a *as) {
+void hash_views(EVP_MD_CTX *ctx, uint8_t keys[3][16], uint8_t rs[3][4],
+                View *localViews[3], a *as) {
   uint8_t hash1[SHA256_DIGEST_LENGTH];
-  H(keys[0], localViews[0], rs[0], hash1);
+  HH(ctx, keys[0], localViews[0], rs[0], hash1);
   memcpy(as->h[0], &hash1, 32);
-  H(keys[1], localViews[1], rs[1], hash1);
+  HH(ctx, keys[1], localViews[1], rs[1], hash1);
   memcpy(as->h[1], &hash1, 32);
-  H(keys[2], localViews[2], rs[2], hash1);
+  HH(ctx, keys[2], localViews[2], rs[2], hash1);
   memcpy(as->h[2], &hash1, 32);
 }
 
-void generate_challenge(a *a, int *e, const UniversalHash *h) {
+void generate_challenge(a *a, int *e, EVP_MD_CTX *ctx) {
   uint32_t finalHash[8];
   for (int j = 0; j < 8; j++) {
     finalHash[j] = a->yp[0][j] ^ a->yp[1][j] ^ a->yp[2][j];
   }
-  H3(finalHash, a, 1, h, e);
+  H3(ctx, finalHash, a, 1, e);
 }
 
 void pick_universal_hash(UniversalHash *h, const uint8_t keyA[16],
@@ -233,6 +234,9 @@ int main(void) {
 
   atomic_int io_error = 0;
 
+  EVP_MD_CTX *base_ctx = setupSHA256();
+  EVP_DigestUpdate(base_ctx, h.A, sizeof(h.A));
+  EVP_DigestUpdate(base_ctx, &h.b, sizeof(h.b));
 #pragma omp parallel
   {
     // Init thread state
@@ -241,11 +245,11 @@ int main(void) {
     uint8_t *randomness[3];
     View *bufViews = malloc(3 * sizeof(View));
     View *localView[3] = {bufViews, bufViews + 1, bufViews + 2};
-
+    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+    EVP_MD_CTX *ctx2 = setupSHA256();
     // Pack into one contiguous buffer to write once
     size_t buffSize = sizeof(a) + sizeof(z_disk);
     unsigned char *bufWrite = malloc(buffSize);
-
     int e;
     init_randomness(randomness);
     a a; // containes 32 bytes ouput for each view and the
@@ -264,12 +268,12 @@ int main(void) {
       mpc_halevi_micali_prover(localView, &a, randomness, rs[k], &h, rShares,
                                msgShares);
       // Committing
-      hash_views(keys[k], rs[k], localView, &a);
-
+      hash_views(ctx2, keys[k], rs[k], localView, &a);
       // Generating E
       //  Note: E is the challenge that determines which 2 of the 3 views must
       //  be opened.
-      generate_challenge(&a, &e, &h);
+      EVP_MD_CTX_copy_ex(ctx, base_ctx);
+      generate_challenge(&a, &e, ctx);
 
       z = prove(e, keys[k], rs[k], localView);
 
@@ -282,17 +286,20 @@ int main(void) {
     free(bufViews);
     free(bufWrite);
     free_randomness(randomness);
+    EVP_MD_CTX_free(ctx);
   }
 
   if (io_error) {
     fprintf(stderr, "Failed to serialize zk proof!\n");
     fclose(file);
     cleanup();
+    EVP_MD_CTX_free(base_ctx);
     exit(EXIT_FAILURE);
   }
 
   update_clock(begin, &inMilli);
   fclose(file);
+  EVP_MD_CTX_free(base_ctx);
   print_runtime(outputFile);
 
   return EXIT_SUCCESS;
