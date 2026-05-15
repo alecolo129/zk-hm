@@ -14,17 +14,15 @@ void handleErrors(void) {
 }
 
 void getAllRandomness(unsigned char key[16],
-                      unsigned char randomness[2912 * NUM_SHA256_BLOCKS]) {
+                      unsigned char randomness[RAND_BYTES]) {
   // Generate randomness: We use SHA256_ROUNDS * (728*32) = SHA256_ROUNDS * 2912 bit of randomness per
   // key.
 
   EVP_CIPHER_CTX *ctx = setupAES(key);
-  if (ctx == NULL) {
-    handleErrors();
-  }
 
+  // TODO: define 4096 as AES chunk constant
   unsigned char plaintext[4096] = {0};
-  size_t outlen = 2912 * NUM_SHA256_BLOCKS;
+  size_t outlen = RAND_BYTES;
   while (outlen) {
     int chunk = (outlen > sizeof(plaintext)) ? (int)sizeof(plaintext) : (int)outlen;
     int produced = 0;
@@ -54,7 +52,7 @@ void getAllRandomness2(unsigned char key[16], unsigned char *randomness,
   EVP_CIPHER_CTX_free(ctx);
 }
 
-uint32_t getRandom32(unsigned char randomness[2912 * NUM_SHA256_BLOCKS],
+uint32_t getRandom32(unsigned char randomness[RAND_BYTES],
                      int randCount) {
   uint32_t ret;
   memcpy(&ret, &randomness[randCount], 4);
