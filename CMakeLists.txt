@@ -3,9 +3,10 @@ project(HM_MPC C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Options
-add_compile_options(-O3)
+
 add_compile_options(-march=native)
 
 option(ENABLE_SANITIZERS "Enable ASan/UBSan" OFF)
@@ -16,11 +17,21 @@ if(ENABLE_SANITIZERS)
     -fsanitize=address,undefined
     -fno-omit-frame-pointer
     -g
+    -O1
   )
   target_link_options(sanitizers INTERFACE
     -fsanitize=address,undefined
   )
+else()
+  add_compile_options(-O3)
 endif()
+
+function(enable_sanitizers_for target)
+  if(TARGET sanitizers)
+    target_link_libraries(${target} PUBLIC sanitizers)
+  endif()
+endfunction()
+
 
 
 
