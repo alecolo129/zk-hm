@@ -176,7 +176,7 @@ typedef struct {
 #define GETBIT(x, i) (((x) >> (i)) & 0x01)
 #define SETBIT(x, i, b)                                                        \
   do {                                                                         \
-    (x) = ((x) & ~(1 << (i))) | ((b) << (i));                                  \
+    (x) = ((x) & ~(1u << (i))) | ((b) << (i));                                  \
   } while (0)
 
 void handleErrors(void);
