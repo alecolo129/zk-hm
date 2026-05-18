@@ -164,7 +164,7 @@ int serialize_zk_proof_at(FILE *f, unsigned char *buf, size_t buffSize, int k,
   size_t proofSize = sizeof(a) + sizeof(z_disk);
   if (buffSize < proofSize) {
     LOG_ERRF("Allocated buffer is %luB, required is %luB\n", buffSize,
-            proofSize);
+             proofSize);
     return -1;
   }
 
@@ -209,6 +209,107 @@ static void free_randomness(uint8_t *randomness[3]) {
     free(randomness[0]);
 }
 
+typedef struct ProverThreadState {
+  // Shares reused each iteration
+  uint8_t rShares[3][L_BYTES];
+  uint32_t msgShares[MSG_WORDS][3];
+
+  // Randomness tapes (3 pointers into one block)
+  uint8_t *rand_block;
+  uint8_t *randomness[3];
+
+  // 3 views in one contiguous block
+  View *views_block;
+  View *views[3];
+
+  // Hash contexts
+  EVP_MD_CTX *ctx_chal; // used with EVP_MD_CTX_copy_ex + H3
+  EVP_MD_CTX *ctx_hash; // used by HH() inside hash_views()
+
+  // Serialization buffer per thread
+  unsigned char *bufWrite;
+  size_t bufSize;
+} ProverThreadState;
+
+static void prover_thread_state_cleanup(ProverThreadState *st) {
+  if (!st)
+    return;
+
+  if (st->ctx_chal)
+    EVP_MD_CTX_free(st->ctx_chal);
+  if (st->ctx_hash)
+    EVP_MD_CTX_free(st->ctx_hash);
+
+  if (st->bufWrite) {
+    free(st->bufWrite);
+  }
+
+  if (st->views_block) {
+    OPENSSL_cleanse(st->views_block, 3u * sizeof(View));
+    free(st->views_block);
+  }
+
+  if (st->rand_block) {
+    OPENSSL_cleanse(st->rand_block, 3u * RAND_BYTES);
+    free(st->rand_block);
+  }
+
+  // Wipe stack-resident shares as well (optional)
+  OPENSSL_cleanse(st->rShares, sizeof(st->rShares));
+  OPENSSL_cleanse(st->msgShares, sizeof(st->msgShares));
+
+  // Reset to a known state
+  memset(st, 0, sizeof(*st));
+}
+
+static int prover_thread_state_init(ProverThreadState *st, size_t bufSize) {
+  if (!st)
+    return -1;
+  memset(st, 0, sizeof(*st));
+
+  st->bufSize = bufSize;
+
+  // Allocate randomness block and set pointers
+  st->rand_block = (uint8_t *)malloc(3u * RAND_BYTES);
+  if (!st->rand_block)
+    goto fail;
+  st->randomness[0] = st->rand_block;
+  st->randomness[1] = st->rand_block + RAND_BYTES;
+  st->randomness[2] = st->rand_block + 2u * RAND_BYTES;
+
+  // Allocate views block and set pointers
+  st->views_block = (View *)malloc(3u * sizeof(View));
+  if (!st->views_block)
+    goto fail;
+  st->views[0] = st->views_block;
+  st->views[1] = st->views_block + 1;
+  st->views[2] = st->views_block + 2;
+
+  // Allocate write buffer (one per thread)
+  st->bufWrite = (unsigned char *)malloc(bufSize);
+  if (!st->bufWrite)
+    goto fail;
+
+  // Create contexts
+  st->ctx_chal = EVP_MD_CTX_new();
+  if (!st->ctx_chal)
+    goto fail;
+
+  st->ctx_hash = setupSHA256();
+  if (!st->ctx_hash)
+    goto fail;
+
+  // Init shares to known values (not strictly necessary, but helps MSan/ASan)
+  memset(st->rShares, 0, sizeof(st->rShares));
+  memset(st->msgShares, 0, sizeof(st->msgShares));
+
+  return 0;
+
+fail:
+  prover_thread_state_cleanup(st);
+  return -1;
+}
+
 int main(void) {
   init();
 
@@ -245,75 +346,64 @@ int main(void) {
   }
   serialize_universal_hash(file, keyH, &h);
 
-  atomic_int io_error = 0;
+  atomic_int error = 0;
 
   EVP_MD_CTX *base_ctx = setupSHA256();
   EVP_DigestUpdate(base_ctx, h.A, sizeof(h.A));
   EVP_DigestUpdate(base_ctx, h.b, sizeof(h.b));
+
+  size_t buffSize = sizeof(a) + sizeof(z_disk);
 #pragma omp parallel
   {
-    // Init thread state
-    uint8_t rShares[3][L_BYTES] = {0};
-    uint32_t msgShares[MSG_BYTES][3] = {0};
-    uint8_t *randomness[3];
-    View *bufViews = malloc(3 * sizeof(View));
-    View *localView[3] = {bufViews, bufViews + 1, bufViews + 2};
-    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
-    EVP_MD_CTX *ctx2 = setupSHA256();
-    // Pack into one contiguous buffer to write once
-    size_t buffSize = sizeof(a) + sizeof(z_disk);
-    unsigned char *bufWrite = malloc(buffSize);
-    int e;
-    init_randomness(randomness);
-    a a; // containes 32 bytes ouput for each view and the
-    // commitments to the views
-    z z;
+    ProverThreadState st;
+    if (prover_thread_state_init(&st, buffSize) != 0) {
+      LOG_ERRF("Thread init failed (malloc/ctx).");
+      atomic_store(&error, 1);
+    }
+
 #pragma omp for
     for (int k = 0; k < NUM_ROUNDS; k++) {
-      if (atomic_load(&io_error))
+      if (atomic_load(&error))
         continue;
 
       // Sharing secrets
-      share_secrets(rShares, msgShares, rBytes, msg);
+      share_secrets(st.rShares, st.msgShares, rBytes, msg);
       // Generating randomness i.e., random tapes
-      generate_randomness(keys[k], randomness);
+      generate_randomness(keys[k], st.randomness);
+
       // Running HM commitment
-      mpc_halevi_micali_prover(localView, &a, randomness, rs[k], &h, rShares,
-                               msgShares);
+      a a;
+      z z;
+      mpc_halevi_micali_prover(st.views, &a, st.randomness, rs[k], &h,
+                               st.rShares, st.msgShares);
       // Committing
-      hash_views(ctx2, keys[k], rs[k], localView, &a);
-      // Generating E
-      //  Note: E is the challenge that determines which 2 of the 3 views must
-      //  be opened.
-      EVP_MD_CTX_copy_ex(ctx, base_ctx);
-      generate_challenge(&a, &e, ctx);
+      hash_views(st.ctx_hash, keys[k], rs[k], st.views, &a);
+      // Generating challenge (determines which 2 of the 3 views must be
+      // opened).
+      int e;
+      EVP_MD_CTX_copy_ex(st.ctx_chal, base_ctx);
+      generate_challenge(&a, &e, st.ctx_chal);
 
-      z = prove(e, keys[k], rs[k], localView);
+      z = prove(e, keys[k], rs[k], st.views);
 
-      if (serialize_zk_proof_at(file, bufWrite, buffSize, k, &a, &z) != 0) {
-        atomic_store(&io_error, 1);
+      if (serialize_zk_proof_at(file, st.bufWrite, buffSize, k, &a, &z) != 0) {
+        atomic_store(&error, 1);
+        LOG_ERRF("Failed to serialize zk proof!\n");
       }
     }
 
     // Release thread state
-    free(bufViews);
-    free(bufWrite);
-    free_randomness(randomness);
-    EVP_MD_CTX_free(ctx);
-  }
-
-  if (io_error) {
-    LOG_ERRF("Failed to serialize zk proof!\n");
-    fclose(file);
-    cleanup();
-    EVP_MD_CTX_free(base_ctx);
-    exit(EXIT_FAILURE);
+    prover_thread_state_cleanup(&st);
   }
 
   update_clock(begin, &inMilli);
   fclose(file);
   EVP_MD_CTX_free(base_ctx);
   print_runtime(outputFile);
+
+  if (error) {
+    return EXIT_FAILURE;
+  }
 
   return EXIT_SUCCESS;
 }
