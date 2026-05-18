@@ -252,12 +252,4 @@ static inline void reconstruct(uint32_t *y0, uint32_t *y1, uint32_t *y2,
   }
 }
 
-void openmp_locking_callback(int mode, int type, char *file, int line);
-
-unsigned long openmp_thread_id(void);
-
-void openmp_thread_setup(void);
-
-void openmp_thread_cleanup(void);
-
 #endif /* SHARED_H_ */

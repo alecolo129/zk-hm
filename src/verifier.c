@@ -126,7 +126,6 @@ void print_message(uint32_t y[8]) {
 
 int main(void) {
   setbuf(stdout, NULL);
-  openmp_thread_setup();
   printf("Iterations of SHA: %d\n", NUM_ROUNDS);
 
   static double inMilli = 0;
@@ -205,6 +204,5 @@ int main(void) {
   printf("Total time: %ju\n", (uintmax_t)inMilli);
 
   fclose(file);
-  openmp_thread_cleanup();
   return EXIT_SUCCESS;
 }

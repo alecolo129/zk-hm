@@ -27,12 +27,9 @@ void test_randomness() {
 void init() {
   setbuf(stdout, NULL);
   srand((unsigned)time(NULL));
-  openmp_thread_setup();
 
   test_randomness();
 }
-
-void cleanup() { openmp_thread_cleanup(); }
 
 static inline void update_clock(double beginClock, double *clockToUpdate) {
   double deltaT = (omp_get_wtime() - beginClock) * 1000;
