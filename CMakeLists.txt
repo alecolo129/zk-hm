@@ -9,6 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_compile_options(-march=native)
 
+option(VERBOSE "Print debug messages" ON)
 option(ENABLE_SANITIZERS "Enable ASan/UBSan" OFF)
 
 if(ENABLE_SANITIZERS)

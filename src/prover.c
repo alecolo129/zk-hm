@@ -19,7 +19,7 @@ static double inMilli = 0;
 void test_randomness() {
   uint8_t garbage[4];
   if (RAND_bytes(garbage, 4) != 1) {
-    printf("RAND_bytes failed crypto, aborting\n");
+    LOG_ERRF("RAND_bytes failed crypto, aborting\n");
     exit(1);
   }
 }
@@ -48,7 +48,7 @@ void print_runtime(const char *outputFile) {
 // TODO: avoid potential leakages
 static inline void RAND_bytes_no_fail(uint8_t *buf, int num) {
   if (RAND_bytes(buf, num) != 1) {
-    printf("RAND_bytes failed crypto, aborting\n");
+    LOG_ERRF("RAND_bytes failed crypto, aborting");
     exit(1);
   }
 }
@@ -152,7 +152,7 @@ void serialize_universal_hash(FILE *f, const uint8_t keyH[16],
   uint32_t nWrite = fwrite(buf, 1, 16 + sizeof(H->b), f);
   if (nWrite != 16 + sizeof(H->b)) {
     fclose(f);
-    fprintf(stderr, "Failed to serialize Universal Hash!\n");
+    LOG_ERRF("Failed to serialize Universal Hash!");
     exit(EXIT_FAILURE);
   }
 }
@@ -163,7 +163,7 @@ int serialize_zk_proof_at(FILE *f, unsigned char *buf, size_t buffSize, int k,
 
   size_t proofSize = sizeof(a) + sizeof(z_disk);
   if (buffSize < proofSize) {
-    fprintf(stderr, "allocated buffer is %luB, required is %luB\n", buffSize,
+    LOG_ERRF("Allocated buffer is %luB, required is %luB\n", buffSize,
             proofSize);
     return -1;
   }
@@ -197,7 +197,7 @@ int serialize_zk_proof_at(FILE *f, unsigned char *buf, size_t buffSize, int k,
 static void init_randomness(uint8_t *randomness[3]) {
   randomness[0] = malloc(3 * RAND_BYTES);
   if (!randomness[0]) {
-    fprintf(stderr, "(%d) malloc failure...\n", __LINE__);
+    LOG_ERRF("malloc failure");
     exit(EXIT_FAILURE);
   }
   randomness[1] = randomness[0] + RAND_BYTES;
@@ -237,7 +237,7 @@ int main(void) {
   sprintf(outputFile, "out%i.bin", NUM_ROUNDS);
   FILE *file = fopen(outputFile, "wb");
   if (!file) {
-    fprintf(stderr, "Unable to open file!");
+    LOG_ERRF("Unable to open file!");
     exit(EXIT_FAILURE);
   }
   serialize_universal_hash(file, keyH, &h);
@@ -300,7 +300,7 @@ int main(void) {
   }
 
   if (io_error) {
-    fprintf(stderr, "Failed to serialize zk proof!\n");
+    LOG_ERRF("Failed to serialize zk proof!\n");
     fclose(file);
     cleanup();
     EVP_MD_CTX_free(base_ctx);

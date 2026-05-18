@@ -6,24 +6,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#define VERBOSE 1
 
 bool verify_hash(a *a, int e, z *z) {
 
   unsigned char hash[SHA256_DIGEST_LENGTH];
   H(z->ke, z->ve, z->re, hash);
   if (memcmp(a->h[e], hash, 32) != 0) {
-#if VERBOSE
-    printf("Failing at %d", __LINE__);
-#endif
+    LOG_ERRF("Hash verification failed");
     return false;
   }
 
   H(z->ke1, z->ve1, z->re1, hash);
   if (memcmp(a->h[(e + 1) % 3], hash, 32) != 0) {
-#if VERBOSE
-    printf("Failing at %d", __LINE__);
-#endif
+    LOG_ERRF("Hash verification failed");
     return false;
   }
 
@@ -36,17 +31,13 @@ int verify_hash2(a2 a, int e, z2 z) {
 
   H2(z.ke, z.ve, z.re, hash);
   if (memcmp(a.h[e], hash, 32) != 0) {
-#if VERBOSE
-    printf("Failing at %d", __LINE__);
-#endif
+    LOG_ERRF("Hash verification failed");
     return 1;
   }
 
   H2(z.ke1, z.ve1, z.re1, hash);
   if (memcmp(a.h[(e + 1) % 3], hash, 32) != 0) {
-#if VERBOSE
-    printf("Failing at %d", __LINE__);
-#endif
+    LOG_ERRF("Hash verification failed");
     return 1;
   }
 
@@ -59,17 +50,13 @@ int verify(a *a, int e, z *z) {
   uint32_t *result = malloc(32);
   output(z->ve, result);
   if (memcmp(a->yp[e], result, 32) != 0) {
-#if VERBOSE
-    printf("Failing at %d", __LINE__);
-#endif
+    LOG_ERRF("Committed outputs inconsistent with opening");
     return 1;
   }
 
   output(z->ve1, result);
   if (memcmp(a->yp[(e + 1) % 3], result, 32) != 0) {
-#if VERBOSE
-    printf("Failing at %d", __LINE__);
-#endif
+    LOG_ERRF("Committed outputs inconsistent with opening");
     return 1;
   }
 
@@ -131,24 +118,18 @@ int verify(a *a, int e, z *z) {
       // w[i][j] = w[i][j-16]+s0[i]+w[i][j-7]+s1[i];
       if (mpc_ADD_verify(w[j - 16], s0, t1, z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
-#if VERBOSE
-        printf("Failing at %d, iteration %d", __LINE__, j);
-#endif
+        LOG_ERRF("MPC verification failed, iteration %d", j);
         return 1;
       }
 
       if (mpc_ADD_verify(w[j - 7], t1, t1, z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
-#if VERBOSE
-        printf("Failing at %d, iteration %d", __LINE__, j);
-#endif
+        LOG_ERRF("MPC verification failed, iteration %d", j);
         return 1;
       }
       if (mpc_ADD_verify(t1, s1, w[j], z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
-#if VERBOSE
-        printf("Failing at %d, iteration %d", __LINE__, j);
-#endif
+        LOG_ERRF("MPC verification failed, iteration %d", j);
         return 1;
       }
     }
@@ -178,26 +159,21 @@ int verify(a *a, int e, z *z) {
 
       if (mpc_ADD_verify(vh, s1, t0, z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
-#if VERBOSE
-        printf("Failing at %d, iteration %d", __LINE__, i);
-#endif
+
+        LOG_ERRF("MPC verification failed, iteration %d", i);
         return 1;
       }
 
       if (mpc_CH_verify(ve, vf, vg, t1, z->ve, z->ve1, randomness, &randCount,
                         &countY) == 1) {
-#if VERBOSE
-        printf("Failing at %d, iteration %d", __LINE__, i);
-#endif
+        LOG_ERRF("MPC verification failed, iteration %d", i);
         return 1;
       }
 
       // t1 = t0 + t1 (h+s1+ch)
       if (mpc_ADD_verify(t0, t1, t1, z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
-#if VERBOSE
-        printf("Failing at %d, iteration %d", __LINE__, i);
-#endif
+        LOG_ERRF("MPC verification failed, iteration %d", i);
         return 1;
       }
 
@@ -205,17 +181,13 @@ int verify(a *a, int e, z *z) {
       t0[1] = k[i];
       if (mpc_ADD_verify(t1, t0, t1, z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
-#if VERBOSE
-        printf("Failing at %d, iteration %d", __LINE__, i);
-#endif
+        LOG_ERRF("MPC verification failed, iteration %d", i);
         return 1;
       }
 
       if (mpc_ADD_verify(t1, w[i], temp1, z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
-#if VERBOSE
-        printf("Failing at %d, iteration %d", __LINE__, i);
-#endif
+        LOG_ERRF("MPC verification failed, iteration %d", i);
         return 1;
       }
 
@@ -231,18 +203,14 @@ int verify(a *a, int e, z *z) {
 
       if (mpc_MAJ_verify(va, vb, vc, maj, z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
-#if VERBOSE
-        printf("Failing at %d, iteration %d", __LINE__, i);
-#endif
+        LOG_ERRF("MPC verification failed, iteration %d", i);
         return 1;
       }
 
       // temp2 = s0+maj;
       if (mpc_ADD_verify(s0, maj, temp2, z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
-#if VERBOSE
-        printf("Failing at %d, iteration %d", __LINE__, i);
-#endif
+        LOG_ERRF("MPC verification failed, iteration %d", i);
         return 1;
       }
 
@@ -252,9 +220,7 @@ int verify(a *a, int e, z *z) {
       // e = d+temp1;
       if (mpc_ADD_verify(vd, temp1, ve, z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
-#if VERBOSE
-        printf("Failing at %d, iteration %d", __LINE__, i);
-#endif
+        LOG_ERRF("MPC verification failed, iteration %d", i);
         return 1;
       }
 
@@ -265,76 +231,56 @@ int verify(a *a, int e, z *z) {
 
       if (mpc_ADD_verify(temp1, temp2, va, z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
-#if VERBOSE
-        printf("Failing at %d, iteration %d", __LINE__, i);
-#endif
+        LOG_ERRF("MPC verification failed, iteration %d", i);
         return 1;
       }
     }
 
     if (mpc_ADD_verify(H[0], va, H[0], z->ve, z->ve1, randomness, &randCount,
                        &countY) == 1) {
-#if VERBOSE
-      printf("Failing at %d", __LINE__);
-#endif
+      LOG_ERRF("MPC verification failed");
       return 1;
     }
     if (mpc_ADD_verify(H[1], vb, H[1], z->ve, z->ve1, randomness, &randCount,
                        &countY) == 1) {
-#if VERBOSE
-      printf("Failing at %d", __LINE__);
-#endif
+      LOG_ERRF("MPC verification failed");
       return 1;
     }
     if (mpc_ADD_verify(H[2], vc, H[2], z->ve, z->ve1, randomness, &randCount,
                        &countY) == 1) {
-#if VERBOSE
-      printf("Failing at %d", __LINE__);
-#endif
+      LOG_ERRF("MPC verification failed");
       return 1;
     }
     if (mpc_ADD_verify(H[3], vd, H[3], z->ve, z->ve1, randomness, &randCount,
                        &countY) == 1) {
-#if VERBOSE
-      printf("Failing at %d", __LINE__);
-#endif
+      LOG_ERRF("MPC verification failed");
       return 1;
     }
     if (mpc_ADD_verify(H[4], ve, H[4], z->ve, z->ve1, randomness, &randCount,
                        &countY) == 1) {
-#if VERBOSE
-      printf("Failing at %d", __LINE__);
-#endif
+      LOG_ERRF("MPC verification failed");
       return 1;
     }
     if (mpc_ADD_verify(H[5], vf, H[5], z->ve, z->ve1, randomness, &randCount,
                        &countY) == 1) {
-#if VERBOSE
-      printf("Failing at %d", __LINE__);
-#endif
+      LOG_ERRF("MPC verification failed");
       return 1;
     }
     if (mpc_ADD_verify(H[6], vg, H[6], z->ve, z->ve1, randomness, &randCount,
                        &countY) == 1) {
-#if VERBOSE
-      printf("Failing at %d", __LINE__);
-#endif
+      LOG_ERRF("MPC verification failed");
       return 1;
     }
     if (mpc_ADD_verify(H[7], vh, H[7], z->ve, z->ve1, randomness, &randCount,
                        &countY) == 1) {
-#if VERBOSE
-      printf("Failing at %d", __LINE__);
-#endif
+      LOG_ERRF("MPC verification failed");
       return 1;
     }
   }
 
   for (int i = 0; i < 8; i++) {
     if ((H[i][0] != a->yp[e][i]) || (H[i][1] != a->yp[(e + 1) % 3][i])) {
-#if VERBOSE
-      printf("Failing at %d", __LINE__);
-#endif
+      LOG_ERRF("Reconstructed output shares don't match commitment");
       return 1;
     }
   }

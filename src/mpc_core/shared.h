@@ -20,12 +20,18 @@ Description : Common functions for the SHA-256 prover and verifier
 #include <stdint.h>
 #include <string.h>
 
+#ifdef VERBOSE
 #define LOG_ERRF(fmt, ...)                                                     \
   do {                                                                         \
+    flockfile(stderr);                                                         \
     fprintf(stderr, "%s:%d:%s(): " fmt "\n", __FILE_NAME__, __LINE__,          \
             __func__, ##__VA_ARGS__);                                          \
     fflush(stderr);                                                            \
+    funlockfile(stderr);                                                       \
   } while (0)
+#else
+#define LOG_ERRF(fmt, ...)
+#endif
 
 /* A 128 bit IV for randomness generation */
 static const unsigned char iv[17] = "0123456789012345";
@@ -170,7 +176,7 @@ typedef struct {
 #define GETBIT(x, i) (((x) >> (i)) & 0x01)
 #define SETBIT(x, i, b)                                                        \
   do {                                                                         \
-    (x) = ((x) & ~(1 << (i))) | ((b) << (i));  \
+    (x) = ((x) & ~(1 << (i))) | ((b) << (i));                                  \
   } while (0)
 
 void handleErrors(void);

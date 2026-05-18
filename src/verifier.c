@@ -93,11 +93,9 @@ int read_zk_proof_at(FILE *f, unsigned char *buf, size_t bufSize, int k,
 bool mpc_halevi_micali_verifier(UniversalHash *H, a *a, z *z, int e) {
 
   if (!verify_hash(a, e, z)) {
-    printf("Commitment not verified!\n");
     return false;
   }
   if (verify(a, e, z) != 0) {
-    printf("SHA256 not verified!\n");
     return false;
   }
 
@@ -113,7 +111,6 @@ bool mpc_halevi_micali_verifier(UniversalHash *H, a *a, z *z, int e) {
   }
 
   if (!mpc_universal_hash_verifier(H, m, r, a->y2p, e)) {
-    printf("Inner product not verified!\n");
     return false;
   }
   return true;

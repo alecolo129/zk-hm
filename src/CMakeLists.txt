@@ -36,6 +36,9 @@ enable_sanitizers_for(mpc_sha256)
 add_library(mpc_sha256_verifier
     ${MPC_SHA_DIR}/MPC_SHA256_VERIFIER.c
 )
+if(VERBOSE)
+    target_compile_definitions(mpc_sha256_verifier PUBLIC VERBOSE)
+endif()
 target_include_directories(mpc_sha256_verifier PUBLIC ${MPC_SHA_DIR} ${MPC_CORE_DIR})
 enable_sanitizers_for(mpc_sha256_verifier)
 
@@ -51,6 +54,9 @@ target_link_libraries(prover_mpc_sha256 PRIVATE
     OpenMP::OpenMP_C
     OpenSSL::Crypto
 )
+if(VERBOSE)
+    target_compile_definitions(prover_mpc_sha256 PUBLIC VERBOSE)
+endif()
 enable_sanitizers_for(prover_mpc_sha256)
 
 add_executable(verifier_mpc_sha256 verifier.c)
