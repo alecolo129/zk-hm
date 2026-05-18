@@ -46,7 +46,7 @@ void print_runtime(const char *outputFile) {
 }
 
 // TODO: avoid potential leakages
-inline void RAND_bytes_no_fail(uint8_t *buf, int num) {
+static inline void RAND_bytes_no_fail(uint8_t *buf, int num) {
   if (RAND_bytes(buf, num) != 1) {
     printf("RAND_bytes failed crypto, aborting\n");
     exit(1);

@@ -3,38 +3,50 @@
 #include "shared.h"
 #include <stdint.h>
 
-inline void mpc_XOR(uint32_t x[3], uint32_t y[3], uint32_t z[3]) {
+static inline void mpc_XOR(uint32_t x[3], uint32_t y[3], uint32_t z[3]) {
   z[0] = x[0] ^ y[0];
   z[1] = x[1] ^ y[1];
   z[2] = x[2] ^ y[2];
 }
 
-inline void mpc_XOR2(uint32_t x[2], uint32_t y[2], uint32_t z[2]) {
+static inline void mpc_XOR2(uint32_t x[2], uint32_t y[2], uint32_t z[2]) {
   z[0] = x[0] ^ y[0];
   z[1] = x[1] ^ y[1];
 }
 
-inline void mpc_NEGATE2(uint32_t x[2], uint32_t z[2]) {
+static inline void mpc_NEGATE2(uint32_t x[2], uint32_t z[2]) {
   z[0] = ~x[0];
   z[1] = ~x[1];
 }
 
-inline void mpc_NEGATE(uint32_t x[3], uint32_t z[3]) {
+static inline void mpc_NEGATE(uint32_t x[3], uint32_t z[3]) {
   z[0] = ~x[0];
   z[1] = ~x[1];
   z[2] = ~x[2];
 }
 
-inline void mpc_RIGHTROTATE(uint32_t x[], int i, uint32_t z[]) {
+static inline void mpc_RIGHTROTATE(uint32_t x[], int i, uint32_t z[]) {
   z[0] = RIGHTROTATE(x[0], i);
   z[1] = RIGHTROTATE(x[1], i);
   z[2] = RIGHTROTATE(x[2], i);
 }
 
-inline void mpc_RIGHTSHIFT(uint32_t x[3], int i, uint32_t z[3]) {
+static inline void mpc_RIGHTSHIFT(uint32_t x[3], int i, uint32_t z[3]) {
   z[0] = x[0] >> i;
   z[1] = x[1] >> i;
   z[2] = x[2] >> i;
+}
+
+static inline void mpc_SETBIT(uint32_t x[3], const uint32_t b[3], const int i){
+  SETBIT(x[0], i, b[0]);
+  SETBIT(x[1], i, b[1]);
+  SETBIT(x[2], i, b[2]);
+}
+
+static inline void mpc_GETBIT(uint32_t x[3], const uint32_t y[3], const int i){
+  x[0] = GETBIT(y[0], i);
+  x[1] = GETBIT(y[1], i);
+  x[2] = GETBIT(y[2], i);
 }
 
 void mpc_AND(uint32_t x[3], uint32_t y[3], uint32_t z[3],
@@ -53,19 +65,19 @@ void mpc_CH(uint32_t e[], uint32_t f[3], uint32_t g[3], uint32_t z[3],
             unsigned char *randomness[3], int *randCount, uint32_t *y_views[3],
             int *countY);
 
-inline void mpc_ADDK_impl(uint32_t x[3], uint32_t y, uint32_t z[3],
+static inline void mpc_ADDK_impl(uint32_t x[3], uint32_t y, uint32_t z[3],
                           unsigned char *randomness[3], int *randCount,
                           uint32_t *y_views[3], int *countY) {
   uint32_t ys[3] = {y, y, y};
   mpc_ADD(x, ys, z, randomness, randCount, y_views, countY);
 }
 
-inline void mpc_RIGHTROTATE2(uint32_t x[], int i, uint32_t z[]) {
+static inline void mpc_RIGHTROTATE2(uint32_t x[], int i, uint32_t z[]) {
   z[0] = RIGHTROTATE(x[0], i);
   z[1] = RIGHTROTATE(x[1], i);
 }
 
-inline void mpc_RIGHTSHIFT2(uint32_t x[2], int i, uint32_t z[2]) {
+static inline void mpc_RIGHTSHIFT2(uint32_t x[2], int i, uint32_t z[2]) {
   z[0] = x[0] >> i;
   z[1] = x[1] >> i;
 }
@@ -82,7 +94,7 @@ int mpc_MAJ_verify(uint32_t a[2], uint32_t b[2], uint32_t c[2], uint32_t z[3],
                    View *ve, View *ve1, unsigned char *randomness[2],
                    int *randCount, int *countY);
 
-inline int mpc_CH_verify(uint32_t e[2], uint32_t f[2], uint32_t g[2],
+static inline int mpc_CH_verify(uint32_t e[2], uint32_t f[2], uint32_t g[2],
                          uint32_t z[2], View *ve, View *ve1,
                          unsigned char *randomness[2],
                          int *randCount, int *countY) {

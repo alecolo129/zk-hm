@@ -35,7 +35,7 @@ void mpc_XORK2(const uint32_t x[2], const uint32_t y, uint32_t z[2]) {
   z[0] = x[0] ^ y;
 }
 
-inline void mpc_XOR2_const(uint32_t x[2], const uint32_t y[2], uint32_t z[2]) {
+static inline void mpc_XOR2_const(uint32_t x[2], const uint32_t y[2], uint32_t z[2]) {
   z[0] = x[0] ^ y[0];
   z[1] = x[1] ^ y[1];
 }

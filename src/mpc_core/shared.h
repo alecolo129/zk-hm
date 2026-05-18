@@ -187,7 +187,7 @@ void H3(EVP_MD_CTX *ctx, uint32_t y[8], a *as, int s, int *es);
 void H3_2(uint32_t y[8], a2 *as, int s, int *es);
 
 /* Helper: write 64-bit big-endian */
-inline void store_u64_be(unsigned char *dst, uint64_t x) {
+static inline void store_u64_be(unsigned char *dst, uint64_t x) {
   dst[0] = (unsigned char)(x >> 56);
   dst[1] = (unsigned char)(x >> 48);
   dst[2] = (unsigned char)(x >> 40);
@@ -199,12 +199,12 @@ inline void store_u64_be(unsigned char *dst, uint64_t x) {
 }
 
 /* Helper: write 32-bit big-endian */
-inline void load_u32_be(uint32_t *dst, const unsigned char *src) {
+static inline void load_u32_be(uint32_t *dst, const unsigned char *src) {
   *dst = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
          ((uint32_t)src[2] << 8) | (uint32_t)src[3];
 }
 
-inline void output2(View2 v[3], a2 *a) {
+static inline void output2(View2 v[3], a2 *a) {
   for (int c = 0; c < 2; c++) {
     memcpy(a->yp[c][0], &v[0].y[c][ySize - 8], 32);
     memcpy(a->yp[c][1], &v[1].y[c][ySize - 8], 32);
@@ -212,12 +212,12 @@ inline void output2(View2 v[3], a2 *a) {
   }
 }
 
-inline void output(View *v, uint32_t *result) {
+static inline void output(View *v, uint32_t *result) {
   memcpy(result, &v->y[ySize - 8], 32);
 }
 
-inline void reconstruct(uint32_t *y0, uint32_t *y1, uint32_t *y2,
-                        uint32_t *result) {
+static inline void reconstruct(uint32_t *y0, uint32_t *y1, uint32_t *y2,
+                               uint32_t *result) {
   for (int i = 0; i < 8; i++) {
     result[i] = y0[i] ^ y1[i] ^ y2[i];
   }
