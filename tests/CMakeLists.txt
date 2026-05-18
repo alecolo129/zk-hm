@@ -11,7 +11,7 @@ add_executable(hm_commit_test
     test_hm_commit.c
 )
 target_link_libraries(hm_commit_test
-    mpc_inner_prod
+    mpc_universal_hash
     ${TEST_COMMON_LIBS}
 )
 

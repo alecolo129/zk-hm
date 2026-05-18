@@ -1,4 +1,4 @@
-#include "MPC_inner_prod.h"
+#include "MPC_universal_hash.h"
 #include "MPC_arithmetic.h"
 #include "shared.h"
 #include "stdbool.h"

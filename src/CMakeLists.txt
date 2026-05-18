@@ -4,7 +4,7 @@
 # =========================
 set(MPC_CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/mpc_core)
 set(MPC_SHA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/mpc_sha256)
-set(MPC_INNER_PROD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/mpc_inner_prod)
+set(MPC_UNIVERSAL_HASH_DIR ${CMAKE_CURRENT_SOURCE_DIR}/mpc_universal_hash)
 
 # =========================
 # Libraries
@@ -19,11 +19,11 @@ target_include_directories(mpc_sha_core PUBLIC ${MPC_CORE_DIR})
 enable_sanitizers_for(mpc_sha_core)
 
 # Inner product
-add_library(mpc_inner_prod
-    ${MPC_INNER_PROD_DIR}/MPC_inner_prod.c
+add_library(mpc_universal_hash
+    ${MPC_UNIVERSAL_HASH_DIR}/MPC_universal_hash.c
 )
-target_include_directories(mpc_inner_prod PUBLIC ${MPC_INNER_PROD_DIR} ${MPC_CORE_DIR})
-enable_sanitizers_for(mpc_inner_prod)
+target_include_directories(mpc_universal_hash PUBLIC ${MPC_UNIVERSAL_HASH_DIR} ${MPC_CORE_DIR})
+enable_sanitizers_for(mpc_universal_hash)
 
 # Prover sha256
 add_library(mpc_sha256
@@ -50,7 +50,7 @@ add_executable(prover_mpc_sha256 prover.c)
 target_link_libraries(prover_mpc_sha256 PRIVATE
     mpc_sha256
     mpc_sha_core
-    mpc_inner_prod
+    mpc_universal_hash
     OpenMP::OpenMP_C
     OpenSSL::Crypto
 )
@@ -63,7 +63,7 @@ add_executable(verifier_mpc_sha256 verifier.c)
 target_link_libraries(verifier_mpc_sha256 PRIVATE
     mpc_sha256_verifier
     mpc_sha_core
-    mpc_inner_prod
+    mpc_universal_hash
     OpenMP::OpenMP_C
     OpenSSL::Crypto
 )

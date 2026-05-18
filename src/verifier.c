@@ -7,7 +7,7 @@
  ============================================================================
  */
 #include "MPC_SHA256_VERIFIER.h"
-#include "MPC_inner_prod.h"
+#include "MPC_universal_hash.h"
 #include "shared.h"
 #include <bits/pthreadtypes.h>
 #include <omp.h>

@@ -1,5 +1,5 @@
 #include "MPC_SHA256.h"
-#include "MPC_inner_prod.h"
+#include "MPC_universal_hash.h"
 #include "omp.h"
 #include "shared.h"
 #include <bits/time.h>

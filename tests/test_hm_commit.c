@@ -1,4 +1,4 @@
-#include "MPC_inner_prod.h"
+#include "MPC_universal_hash.h"
 #include "openssl/rand.h"
 #include "shared.h"
 #include <stdbool.h>
@@ -30,7 +30,7 @@ uint32_t verify_universal_hash(const UniversalHash H, const uint32_t r[L_WORDS],
     y ^= H.A[i] & r[i];
   }
   uint32_t b_rec = __builtin_parity(y);
-  return (b_rec ^ m) == H.b;
+  return (b_rec ^ m) == H.b[0];
 }
 
 void hm_bit_comit(const uint8_t m, const uint32_t r[L_WORDS], uint8_t y[32],
@@ -60,7 +60,7 @@ bool hm_bit_verify(const uint32_t m, const bit_commit *commit,
 
   // verify Ar + b - m = 0
   UniversalHash H = commit->H;
-  uint32_t zero_bit = (H.b & 1) ^ (m & 1);
+  uint32_t zero_bit = (H.b[0] & 1) ^ (m & 1);
   for (int i = 0; i < L_WORDS; i++) {
     zero_bit ^= H.A[i] & r[i];
   }
@@ -79,7 +79,7 @@ int main(void) {
 
   {
     bit_commit comm;
-    hm_bit_comit(msg, rWords, comm.y, comm.H.A, &comm.H.b);
+    hm_bit_comit(msg, rWords, comm.y, comm.H.A, &comm.H.b[0]);
     if (!hm_bit_verify(msg, &comm, rWords)) {
       printf("Not verified!\n");
       return EXIT_FAILURE;
@@ -89,7 +89,7 @@ int main(void) {
   uint8_t keyA[16];
   RAND_bytes(keyA, sizeof(keyA));
   UniversalHash H;
-  generate_H(H.A, &H.b, keyA, msg, rWords);
+  generate_H(H.A, &H.b[0], keyA, &msg, rWords);
   if (!verify_universal_hash(H, rWords, msg)) {
     printf("Universal hash is malformed!\n");
     exit(EXIT_FAILURE);
@@ -110,7 +110,7 @@ int main(void) {
 
     uint32_t ys[3] = {0};
     mpc_inner_prod_prover(&H, msgShares, rShares, ys);
-    if (((ys[0] ^ ys[1] ^ ys[2]) ^ H.b) != 0) {
+    if (((ys[0] ^ ys[1] ^ ys[2]) ^ H.b[0]) != 0) {
       printf("MPC prover produces unexpected result! - %d\n", i);
       exit(EXIT_FAILURE);
     }
