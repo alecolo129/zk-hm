@@ -70,7 +70,7 @@ void share_secrets(uint8_t rShares[3][L_BYTES],
   }
 
   RAND_bytes_no_fail((uint8_t *)msgShares, 3 * MSG_WORDS * sizeof(uint32_t));
-  uint32_t mask = (1ul << (MSG_BITS % 32)) - 1;
+  uint32_t mask = (MSG_BITS % 32) ? ((1ul << (MSG_BITS % 32)) - 1) : 0xFFFFFFFFu;
   msgShares[MSG_WORDS - 1][0] &= mask;
   msgShares[MSG_WORDS - 1][1] &= mask;
   for (int j = 0; j < MSG_WORDS; j++) {
@@ -216,10 +216,13 @@ int main(void) {
   uint8_t msg[MSG_WORDS * 4]; // 32-bit alligned
 
   RAND_bytes_no_fail(rBytes,
-                     sizeof(rBytes));            // take random r in {0,1}^L
-  RAND_bytes_no_fail(msg, MSG_BYTES);            // take a random MSG
-  msg[MSG_BYTES - 1] &= (1 << MSG_BITS % 8) - 1; // clear highest bits
-  // TODO: adapt this for msg of arbitrary length
+                     sizeof(rBytes)); // take random r in {0,1}^L
+                
+  RAND_bytes_no_fail(msg, MSG_BYTES); // take a random MSG
+  if (MSG_BITS % 8 != 0) {            // clear highest bits if needed
+    msg[MSG_BYTES - 1] &= (1 << MSG_BITS % 8) - 1;
+  }
+
   printf("Iterations of SHA: %d\n", NUM_ROUNDS);
 
   double begin = omp_get_wtime();
