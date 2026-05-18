@@ -1,6 +1,7 @@
 #include "MPC_universal_hash.h"
 #include "openssl/rand.h"
 #include "shared.h"
+#include <crypto.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -73,7 +74,7 @@ int main(void) {
 
   uint8_t msg = 1;
   RAND_bytes((uint8_t *)&msg, 1);
-  msg&=1;
+  msg &= 1;
   uint32_t rWords[L_WORDS];
   RAND_bytes((uint8_t *)rWords, sizeof(rWords));
 

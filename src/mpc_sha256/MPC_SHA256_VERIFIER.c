@@ -2,6 +2,7 @@
 #include "MPC_arithmetic.h"
 #include "shared.h"
 #include "stdbool.h"
+#include <crypto.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,26 +26,6 @@ bool verify_hash(a *a, int e, z *z) {
   return true;
 }
 
-int verify_hash2(a2 a, int e, z2 z) {
-
-  unsigned char *hash = malloc(SHA256_DIGEST_LENGTH);
-
-  H2(z.ke, z.ve, z.re, hash);
-  if (memcmp(a.h[e], hash, 32) != 0) {
-    LOG_ERRF("Hash verification failed");
-    return 1;
-  }
-
-  H2(z.ke1, z.ve1, z.re1, hash);
-  if (memcmp(a.h[(e + 1) % 3], hash, 32) != 0) {
-    LOG_ERRF("Hash verification failed");
-    return 1;
-  }
-
-  free(hash);
-  return 0;
-}
-
 int verify(a *a, int e, z *z) {
 
   uint32_t *result = malloc(32);
@@ -63,7 +44,7 @@ int verify(a *a, int e, z *z) {
   free(result);
 
   unsigned char *randomness[2];
-  randomness[0] = malloc(2*RAND_BYTES);
+  randomness[0] = malloc(2 * RAND_BYTES);
   randomness[1] = randomness[0] + RAND_BYTES;
   getAllRandomness(z->ke, randomness[0]);
   getAllRandomness(z->ke1, randomness[1]);
@@ -116,14 +97,14 @@ int verify(a *a, int e, z *z) {
       mpc_XOR2(t0, t1, s1);
 
       // w[i][j] = w[i][j-16]+s0[i]+w[i][j-7]+s1[i];
-      if (mpc_ADD_verify(w[j - 16], s0, t1, z->ve, z->ve1, randomness, &randCount,
-                         &countY) == 1) {
+      if (mpc_ADD_verify(w[j - 16], s0, t1, z->ve, z->ve1, randomness,
+                         &randCount, &countY) == 1) {
         LOG_ERRF("MPC verification failed, iteration %d", j);
         return 1;
       }
 
-      if (mpc_ADD_verify(w[j - 7], t1, t1, z->ve, z->ve1, randomness, &randCount,
-                         &countY) == 1) {
+      if (mpc_ADD_verify(w[j - 7], t1, t1, z->ve, z->ve1, randomness,
+                         &randCount, &countY) == 1) {
         LOG_ERRF("MPC verification failed, iteration %d", j);
         return 1;
       }
@@ -229,8 +210,8 @@ int verify(a *a, int e, z *z) {
       memcpy(vb, va, sizeof(vb));
       // a = temp1+temp2;
 
-      if (mpc_ADD_verify(temp1, temp2, va, z->ve, z->ve1, randomness, &randCount,
-                         &countY) == 1) {
+      if (mpc_ADD_verify(temp1, temp2, va, z->ve, z->ve1, randomness,
+                         &randCount, &countY) == 1) {
         LOG_ERRF("MPC verification failed, iteration %d", i);
         return 1;
       }
@@ -284,8 +265,30 @@ int verify(a *a, int e, z *z) {
       return 1;
     }
   }
-  
+
   free(randomness[0]);
 
   return 0;
 }
+
+/*
+int verify_hash2(a2 a, int e, z2 z) {
+
+  unsigned char *hash = malloc(SHA256_DIGEST_LENGTH);
+
+  H2(z.ke, z.ve, z.re, hash);
+  if (memcmp(a.h[e], hash, 32) != 0) {
+    LOG_ERRF("Hash verification failed");
+    return 1;
+  }
+
+  H2(z.ke1, z.ve1, z.re1, hash);
+  if (memcmp(a.h[(e + 1) % 3], hash, 32) != 0) {
+    LOG_ERRF("Hash verification failed");
+    return 1;
+  }
+
+  free(hash);
+  return 0;
+}
+*/

@@ -1,5 +1,6 @@
 #include "MPC_SHA256.h"
 #include "MPC_universal_hash.h"
+#include "crypto.h"
 #include "omp.h"
 #include "shared.h"
 #include <bits/time.h>
@@ -67,7 +68,8 @@ void share_secrets(uint8_t rShares[3][L_BYTES],
   }
 
   RAND_bytes_no_fail((uint8_t *)msgShares, 3 * MSG_WORDS * sizeof(uint32_t));
-  uint32_t mask = (MSG_BITS % 32) ? ((1ul << (MSG_BITS % 32)) - 1) : 0xFFFFFFFFu;
+  uint32_t mask =
+      (MSG_BITS % 32) ? ((1ul << (MSG_BITS % 32)) - 1) : 0xFFFFFFFFu;
   msgShares[MSG_WORDS - 1][0] &= mask;
   msgShares[MSG_WORDS - 1][1] &= mask;
   for (int j = 0; j < MSG_WORDS; j++) {
@@ -315,7 +317,7 @@ int main(void) {
 
   RAND_bytes_no_fail(rBytes,
                      sizeof(rBytes)); // take random r in {0,1}^L
-                
+
   RAND_bytes_no_fail(msg, MSG_BYTES); // take a random MSG
   if (MSG_BITS % 8 != 0) {            // clear highest bits if needed
     msg[MSG_BYTES - 1] &= (1 << MSG_BITS % 8) - 1;

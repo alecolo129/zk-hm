@@ -9,6 +9,7 @@
 #include "MPC_SHA256_VERIFIER.h"
 #include "MPC_universal_hash.h"
 #include "shared.h"
+#include "crypto.h"
 #include <bits/pthreadtypes.h>
 #include <omp.h>
 #include <pthread.h>

@@ -1,5 +1,5 @@
 #include "MPC_arithmetic.h"
-#include "shared.h"
+#include "crypto.h"
 
 void mpc_ADD(uint32_t x[3], uint32_t y[3], uint32_t z[3],
                   unsigned char *randomness[3], int *randCount,

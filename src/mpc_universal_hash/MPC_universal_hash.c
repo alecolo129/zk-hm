@@ -1,10 +1,10 @@
 #include "MPC_universal_hash.h"
 #include "MPC_arithmetic.h"
+#include "crypto.h"
 #include "shared.h"
 #include "stdbool.h"
 #include <stdint.h>
 #include <stdio.h>
-
 
 void expand_A(uint32_t A[A_WORDS], const uint8_t keyA[16]) {
   EVP_CIPHER_CTX *ctx = setupAES(keyA);
@@ -125,7 +125,6 @@ bool mpc_universal_hash_verifier(const UniversalHash *h,
   }
   return true;
 }
-
 
 void mpc_inner_prod_prover(const UniversalHash *h, const uint32_t m[3],
                            const uint32_t r[L_WORDS][3], uint32_t y[3]) {
