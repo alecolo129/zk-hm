@@ -39,15 +39,14 @@ int read_hash(FILE *f, uint8_t keyH[16], UniversalHash *H) {
   unsigned long nRead = fread(buf, 1, sizeof(buf), f);
   if (nRead == sizeof(buf)) {
     memcpy(keyH, buf, 16);
-    memcpy(&H->b, buf + 16, sizeof(H->b));
+    memcpy(H->b, buf + 16, sizeof(H->b));
   }
   return (nRead == sizeof(buf) ? 0 : -1);
 }
 
 int read_zk_proof_at(FILE *f, unsigned char *buf, size_t bufSize, int k,
                      a *a_ptr, z *z_ptr) {
-  off_t initial_offset =
-      16 + 1; // TODO: this should not depend on H.b being 1 byte
+  off_t initial_offset = 16 + MSG_BYTES;
 
   size_t proofSize = sizeof(a) + sizeof(z_disk);
   if (bufSize < proofSize) {
@@ -102,14 +101,18 @@ bool mpc_halevi_micali_verifier(UniversalHash *H, a *a, z *z, int e) {
     return false;
   }
 
-  uint32_t m[2] = {z->ve->msg, z->ve1->msg};
+  uint32_t m[MSG_WORDS][2];
+  for (int i = 0; i < MSG_WORDS; i++) {
+    load_u32_le(&m[i][0], &z->ve->msg[i * 4]);
+    load_u32_le(&m[i][1], &z->ve1->msg[i * 4]);
+  };
   uint32_t r[L_WORDS][2];
   for (int j = 0; j < L_WORDS; j++) {
     memcpy(&r[j][0], &z->ve->x[j * 4], sizeof(uint32_t));
     memcpy(&r[j][1], &z->ve1->x[j * 4], sizeof(uint32_t));
   }
 
-  if (!mpc_inner_prod_verify(H, m, r, a->y2p, e)) {
+  if (!mpc_universal_hash_verifier(H, m, r, a->y2p, e)) {
     printf("Inner product not verified!\n");
     return false;
   }
@@ -153,7 +156,7 @@ int main(void) {
 
   EVP_MD_CTX *base_ctx = setupSHA256();
   EVP_DigestUpdate(base_ctx, h.A, sizeof(h.A));
-  EVP_DigestUpdate(base_ctx, &h.b, sizeof(h.b));
+  EVP_DigestUpdate(base_ctx, h.b, sizeof(h.b));
 
   atomic_int io_error = 0;
 #pragma omp parallel

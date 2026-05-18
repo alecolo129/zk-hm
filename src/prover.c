@@ -60,17 +60,23 @@ void generate_keys_and_rs(uint8_t keys[NUM_ROUNDS][3][16], uint8_t keyH[16],
   RAND_bytes_no_fail((uint8_t *)rs, NUM_ROUNDS * 3 * 4);
 }
 
-void share_secrets(uint8_t rShares[3][L_BYTES], uint32_t msgShares[3],
-                   const uint8_t rBytes[L_BYTES], const uint8_t msg) {
-  RAND_bytes_no_fail((uint8_t *)rShares, 3 * L_BYTES);
-  RAND_bytes_no_fail((uint8_t *)msgShares, 3 * sizeof(uint32_t));
-
+void share_secrets(uint8_t rShares[3][L_BYTES],
+                   uint32_t msgShares[MSG_WORDS][3],
+                   const uint8_t rBytes[L_BYTES],
+                   const uint8_t msg[MSG_BYTES]) {
+  RAND_bytes_no_fail((uint8_t *)rShares, 3 * L_BYTES * sizeof(uint8_t));
   for (int j = 0; j < L_BYTES; j++) {
     rShares[2][j] = rBytes[j] ^ rShares[0][j] ^ rShares[1][j];
   }
-  msgShares[0] &= 1;
-  msgShares[1] &= 1;
-  msgShares[2] = msg ^ msgShares[0] ^ msgShares[1];
+
+  RAND_bytes_no_fail((uint8_t *)msgShares, 3 * MSG_WORDS * sizeof(uint32_t));
+  uint32_t mask = (1ul << (MSG_BITS % 32)) - 1;
+  msgShares[MSG_WORDS - 1][0] &= mask;
+  msgShares[MSG_WORDS - 1][1] &= mask;
+  for (int j = 0; j < MSG_WORDS; j++) {
+    load_u32_le(&msgShares[j][2], &msg[j * 4]);
+    msgShares[j][2] ^= msgShares[j][0] ^ msgShares[j][1];
+  }
 }
 
 void bytes_to_words(uint32_t rWords[L_WORDS], const uint8_t rBytes[L_BYTES]) {
@@ -83,7 +89,7 @@ void mpc_halevi_micali_prover(View *localViews[3], a *as,
                               uint8_t *randomness[3], uint8_t rs[3][4],
                               const UniversalHash *h,
                               uint8_t rShares[3][L_BYTES],
-                              const uint32_t msgShares[3]) {
+                              const uint32_t msgShares[MSG_WORDS][3]) {
 
   // prove y = SHA256(r)
   commit(rShares, randomness, rs, localViews);
@@ -94,17 +100,19 @@ void mpc_halevi_micali_prover(View *localViews[3], a *as,
   output(localViews[2], as->yp[2]);
 
   // prove H(r) = m
-  uint32_t rWords[L_WORDS][3];
+  uint32_t rWords[L_WORDS][3] = {0};
   for (int i = 0; i < L_WORDS; i++) {
     memcpy(&rWords[i][0], &rShares[0][i * 4], sizeof(uint32_t));
     memcpy(&rWords[i][1], &rShares[1][i * 4], sizeof(uint32_t));
     memcpy(&rWords[i][2], &rShares[2][i * 4], sizeof(uint32_t));
   }
   // copy msg share into respective local view
-  localViews[0]->msg = msgShares[0];
-  localViews[1]->msg = msgShares[1];
-  localViews[2]->msg = msgShares[2];
-  mpc_inner_prod_prover(h, msgShares, rWords, as->y2p);
+  for (int i = 0; i < MSG_WORDS; i++) {
+    memcpy(&localViews[0]->msg[i * 4], &msgShares[i][0], sizeof(uint32_t));
+    memcpy(&localViews[1]->msg[i * 4], &msgShares[i][1], sizeof(uint32_t));
+    memcpy(&localViews[2]->msg[i * 4], &msgShares[i][2], sizeof(uint32_t));
+  }
+  mpc_universal_hash_prover(h, msgShares, rWords, as->y2p);
 }
 
 void hash_views(EVP_MD_CTX *ctx, uint8_t keys[3][16], uint8_t rs[3][4],
@@ -127,10 +135,11 @@ void generate_challenge(a *a, int *e, EVP_MD_CTX *ctx) {
 }
 
 void pick_universal_hash(UniversalHash *h, const uint8_t keyA[16],
-                         const uint8_t rBytes[L_BYTES], const uint8_t msg) {
+                         const uint8_t rBytes[L_BYTES],
+                         const uint8_t msg[MSG_BYTES]) {
   uint32_t rWords[L_WORDS];
   bytes_to_words(rWords, rBytes);
-  generate_H(h->A, &h->b, keyA, msg, rWords);
+  generate_H(h->A, h->b, keyA, msg, rWords);
 }
 
 void serialize_universal_hash(FILE *f, const uint8_t keyH[16],
@@ -138,7 +147,7 @@ void serialize_universal_hash(FILE *f, const uint8_t keyH[16],
   // Pack into one contiguous buffer to write once
   unsigned char buf[16 + sizeof(H->b)];
   memcpy(buf, keyH, 16);
-  memcpy(buf + 16, &H->b, sizeof(H->b));
+  memcpy(buf + 16, H->b, sizeof(H->b));
 
   uint32_t nWrite = fwrite(buf, 1, 16 + sizeof(H->b), f);
   if (nWrite != 16 + sizeof(H->b)) {
@@ -150,8 +159,7 @@ void serialize_universal_hash(FILE *f, const uint8_t keyH[16],
 
 int serialize_zk_proof_at(FILE *f, unsigned char *buf, size_t buffSize, int k,
                           const a *a_ptr, const z *z_ptr) {
-  off_t initial_offset =
-      16 + 1; // TODO: this should not depend on H.b being 1 byte
+  off_t initial_offset = 16 + MSG_BYTES;
 
   size_t proofSize = sizeof(a) + sizeof(z_disk);
   if (buffSize < proofSize) {
@@ -205,11 +213,13 @@ int main(void) {
   init();
 
   uint8_t rBytes[L_BYTES];
-  uint8_t msg;
-  RAND_bytes_no_fail((uint8_t *)rBytes,
-                     sizeof(rBytes)); // take random r in {0,1}^L
-  RAND_bytes_no_fail(&msg, sizeof(msg));
-  msg &= 1;
+  uint8_t msg[MSG_WORDS * 4]; // 32-bit alligned
+
+  RAND_bytes_no_fail(rBytes,
+                     sizeof(rBytes));            // take random r in {0,1}^L
+  RAND_bytes_no_fail(msg, MSG_BYTES);            // take a random MSG
+  msg[MSG_BYTES - 1] &= (1 << MSG_BITS % 8) - 1; // clear highest bits
+  // TODO: adapt this for msg of arbitrary length
   printf("Iterations of SHA: %d\n", NUM_ROUNDS);
 
   double begin = omp_get_wtime();
@@ -236,12 +246,12 @@ int main(void) {
 
   EVP_MD_CTX *base_ctx = setupSHA256();
   EVP_DigestUpdate(base_ctx, h.A, sizeof(h.A));
-  EVP_DigestUpdate(base_ctx, &h.b, sizeof(h.b));
+  EVP_DigestUpdate(base_ctx, h.b, sizeof(h.b));
 #pragma omp parallel
   {
     // Init thread state
-    uint8_t rShares[3][L_BYTES];
-    uint32_t msgShares[3];
+    uint8_t rShares[3][L_BYTES] = {0};
+    uint32_t msgShares[MSG_BYTES][3] = {0};
     uint8_t *randomness[3];
     View *bufViews = malloc(3 * sizeof(View));
     View *localView[3] = {bufViews, bufViews + 1, bufViews + 2};

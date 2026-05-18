@@ -20,6 +20,13 @@ Description : Common functions for the SHA-256 prover and verifier
 #include <stdint.h>
 #include <string.h>
 
+#define LOG_ERRF(fmt, ...)                                                     \
+  do {                                                                         \
+    fprintf(stderr, "%s:%d:%s(): " fmt "\n", __FILE_NAME__, __LINE__,          \
+            __func__, ##__VA_ARGS__);                                          \
+    fflush(stderr);                                                            \
+  } while (0)
+
 /* A 128 bit IV for randomness generation */
 static const unsigned char iv[17] = "0123456789012345";
 
@@ -45,35 +52,42 @@ static const uint32_t k[64] = {
  * With 136 round, soundness error = 2^{-80}*/
 #define NUM_ROUNDS 136
 /* Number of bits of the comitted message. */
-#define MSG_BITS 1u
-/* Bindness security parameter, we have k/2 of collision resistance. 
-* Note: For bit commitments, we save 1 SHA block if we accept k=238 (i.e., 119 bits of collision resistance).
-*/
+#define MSG_BITS 100000u
+#define MSG_WORDS ((MSG_BITS + 31) / 32)
+#define MSG_BYTES ((MSG_BITS + 7) / 8)
+/* Bindness security parameter, we have k/2 of collision resistance.
+ * Note: For bit commitments, we save 1 SHA block if we accept k=238 (i.e., 119
+ * bits of collision resistance).
+ */
 #define K 256
 /* Reuired length of the Halevi-Micali random vector 'r' (i.e., the opening). */
 #define L_BITS (4 * K + 2 * MSG_BITS + 4)
-#define L_BYTES L_BITS / 8
-#define L_WORDS L_BITS / 32
+#define L_BYTES (L_BITS / 8)
+#define L_WORDS (L_BITS / 32)
 /* Reuired number of SHA256 blocks to hash the committed vector 'r'. */
 #define NUM_SHA256_BLOCKS                                                      \
   ((L_BITS + 1 + 64 + 511) / 512) // ceil((L + 1 + 54) / 512)
 /* Reuired number of random bytes to proof knowledge of the committed message.
  * Note: for each SHA256 block we need 2912 bytes of randomness */
-#define RAND_BYTES 2912 * NUM_SHA256_BLOCKS
+#define RAND_BYTES (2912 * NUM_SHA256_BLOCKS)
 /* Size of the circuit output in 32-bit words.
  * We need 'RAND_BYTES/4' words to store all the AND/ADD openings + 8 words to
  * store the SHA256 output. */
-#define ySize RAND_BYTES / 4 + 8
+#define ySize (RAND_BYTES / 4 + 8)
+
+#define A_ROWS ((MSG_BITS - 1 + 31) / 32)
+#define A_WORDS (A_ROWS + L_WORDS + 1) // Additional padding word
+#define A_BYTES (A_ROWS + L_WORDS + 1) * 4
 
 typedef struct {
-  uint32_t A[L_WORDS];
-  uint8_t b;
+  uint32_t A[A_WORDS]; // Toeplitz matrix
+  uint8_t b[MSG_BYTES];
 } UniversalHash;
 
 // views
 typedef struct {
   unsigned char x[L_BYTES]; // secret input share = SHA256 input
-  uint8_t msg;              // share of the committed message
+  uint8_t msg[MSG_BYTES];   // share of the committed message
   uint32_t y[ySize]; // output share (i.e., all the ADD/AND commits + the SHA256
                      // output)
 } View;
@@ -81,7 +95,7 @@ typedef struct {
 // commitment
 typedef struct {
   uint32_t yp[3][8]; // SHA256 output of each party
-  uint32_t y2p[3];
+  uint32_t y2p[MSG_WORDS][3];
   unsigned char h[3][32]; // SHA256 of each party's key and view with commitment
                           // randomnes k
 } a;
@@ -202,6 +216,12 @@ static inline void store_u64_be(unsigned char *dst, uint64_t x) {
 static inline void load_u32_be(uint32_t *dst, const unsigned char *src) {
   *dst = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
          ((uint32_t)src[2] << 8) | (uint32_t)src[3];
+}
+
+/* Helper: write 32-bit big-endian */
+static inline void load_u32_le(uint32_t *dst, const unsigned char *src) {
+  *dst = ((uint32_t)src[3] << 24) | ((uint32_t)src[2] << 16) |
+         ((uint32_t)src[1] << 8) | (uint32_t)src[0];
 }
 
 static inline void output2(View2 v[3], a2 *a) {
