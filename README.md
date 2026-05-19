@@ -1,7 +1,59 @@
-# ZKBoo
+# zk-HM (ZKBoo + Halevi–Micali Commitments)
 
-Zero Knowledge Prover and Verifier for Boolean Circuits. Currently available is a prover and verifier for SHA-1 and SHA-256. They on OpenSSL for doing commits and randomness generation and use OpenMP for parallelization.
+This repository implements a **ZKBoo-style proof of SHA-256 preimage knowledge**, adapted to **statistically hiding Halevi–Micali (HM) commitments**.
 
-When starting either prover, it will prompt for an input to hash. After entering the input, the proof will be generated as a file in the directory the program resides in. The file is named out<NUM_ROUNDS>.bin where <NUM_ROUNDS> is the number of rounds of the algorithm run (Set to 136 by defauly, but can be changed in shared.h. Likewise, the verifier will look for a file in its directory with the same naming syntax to verify.
+It extends the MPC-in-the-head SHA-256 proof by:
+- supporting **arbitrary-length inputs** (multiple SHA-256 rounds),
+- integrating a **universal hashing step**,
+- enabling a proof of knowledge of the preimage of a **statistically-hiding HM commitment** (using SHA-256 as the collision-resistant function).
 
-This was improved on by [ZKB++](https://eprint.iacr.org/2017/279.pdf), an improved version of ZKBOO with NIZK proofs that are less than half the size of ZKBOO proofs. Moreover, benchmarks show that this size reduction comes at no extra computational cost.
+---
+
+## Features
+
+- ✅ ZKBoo-style MPC proof for SHA-256 preimage knowledge  
+- ✅ Extension to **multi-block (long message) SHA-256 inputs**  
+- ✅ Integration of **Halevi–Micali statistically hiding commitments**  
+- ✅ Universal-hash based proof of commitment opening  
+- ✅ **Improved parallel execution (OpenMP)** including serialization/deserialization for faster proof generation  
+
+---
+
+## Build
+
+### Requirements
+
+- C compiler (C11)
+- CMake ≥ 3.16
+- OpenSSL (tested with 3.0)
+- OpenMP
+
+### Compile
+
+```bash
+./build.sh
+```
+### Compile with sanitizers (slower)
+
+```bash
+./build.sh -s
+```
+
+## Usage
+
+### Prover
+
+```bash
+./build/bin/hm_prover
+```
+
+### Verifier
+
+```bash
+./build/bin/hm_verifier
+```
+
+The output file (i.e., zk proof) is named:
+``
+out<NUM_ROUNDS>.bin
+``
