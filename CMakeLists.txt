@@ -27,14 +27,6 @@ else()
   add_compile_options(-O3)
 endif()
 
-function(enable_sanitizers_for target)
-  if(TARGET sanitizers)
-    target_link_libraries(${target} PUBLIC sanitizers)
-  endif()
-endfunction()
-
-
-
 
 # Dependencies
 find_package(OpenMP REQUIRED)

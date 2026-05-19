@@ -5,72 +5,74 @@
 set(MPC_CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/mpc_core)
 set(MPC_SHA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/mpc_sha256)
 set(MPC_UNIVERSAL_HASH_DIR ${CMAKE_CURRENT_SOURCE_DIR}/mpc_universal_hash)
+set(UTILS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/utils)
 
 # =========================
 # Libraries
 # =========================
 
-# Shared components
-add_library(mpc_sha_core
+### Shared components
+add_library(mpc_core
     ${MPC_CORE_DIR}/shared.c
     ${MPC_CORE_DIR}/MPC_arithmetic.c
-)
-target_include_directories(mpc_sha_core PUBLIC ${MPC_CORE_DIR})
-enable_sanitizers_for(mpc_sha_core)
-
-# Inner product
-add_library(mpc_universal_hash
     ${MPC_UNIVERSAL_HASH_DIR}/MPC_universal_hash.c
+    ${UTILS_DIR}/crypto.c
 )
-target_include_directories(mpc_universal_hash PUBLIC ${MPC_UNIVERSAL_HASH_DIR} ${MPC_CORE_DIR})
-enable_sanitizers_for(mpc_universal_hash)
+target_include_directories(mpc_core PUBLIC ${MPC_CORE_DIR} ${UTILS_DIR} ${MPC_UNIVERSAL_HASH_DIR})
 
-# Prover sha256
-add_library(mpc_sha256
+### Prover
+add_library(mpc_hm_prover
     ${MPC_SHA_DIR}/MPC_SHA256.c
 )
-target_include_directories(mpc_sha256 PUBLIC ${MPC_SHA_DIR} ${MPC_CORE_DIR})
-enable_sanitizers_for(mpc_sha256)
+target_include_directories(mpc_hm_prover PUBLIC ${MPC_CORE_DIR} ${MPC_SHA_DIR} ${UTILS_DIR} ${MPC_UNIVERSAL_HASH_DIR})
 
-# Verifier sha256
-add_library(mpc_sha256_verifier
+### Verifier
+add_library(mpc_hm_verifier
     ${MPC_SHA_DIR}/MPC_SHA256_VERIFIER.c
 )
-if(VERBOSE)
-    target_compile_definitions(mpc_sha256_verifier PUBLIC VERBOSE)
-endif()
-target_include_directories(mpc_sha256_verifier PUBLIC ${MPC_SHA_DIR} ${MPC_CORE_DIR})
-enable_sanitizers_for(mpc_sha256_verifier)
+target_include_directories(mpc_hm_verifier PUBLIC ${MPC_CORE_DIR} ${MPC_SHA_DIR} ${UTILS_DIR} ${MPC_UNIVERSAL_HASH_DIR})
 
 # =========================
 # Executables
 # =========================
 
-add_executable(prover_mpc_sha256 prover.c)
-target_link_libraries(prover_mpc_sha256 PRIVATE
-    mpc_sha256
-    mpc_sha_core
-    mpc_universal_hash
+add_executable(hm_prover prover.c)
+target_link_libraries(hm_prover PRIVATE
+    mpc_hm_prover
+    mpc_core
     OpenMP::OpenMP_C
     OpenSSL::Crypto
 )
-if(VERBOSE)
-    target_compile_definitions(prover_mpc_sha256 PUBLIC VERBOSE)
-endif()
-enable_sanitizers_for(prover_mpc_sha256)
 
-add_executable(verifier_mpc_sha256 verifier.c)
-target_link_libraries(verifier_mpc_sha256 PRIVATE
-    mpc_sha256_verifier
-    mpc_sha_core
-    mpc_universal_hash
+add_executable(hm_verifier verifier.c)
+target_link_libraries(hm_verifier PRIVATE
+    mpc_hm_verifier
+    mpc_core
     OpenMP::OpenMP_C
     OpenSSL::Crypto
 )
-enable_sanitizers_for(verifier_mpc_sha256)
+
+### Enable debugging info
+if(VERBOSE)
+    target_compile_definitions(mpc_core PUBLIC VERBOSE)
+    target_compile_definitions(mpc_hm_prover PUBLIC VERBOSE)
+    target_compile_definitions(mpc_hm_verifier PUBLIC VERBOSE)
+    target_compile_definitions(hm_prover PUBLIC VERBOSE)
+    target_compile_definitions(hm_verifier PUBLIC VERBOSE)
+endif()
+
+### Enable address sanitizer
+if(ENABLE_SANITIZERS)
+    target_link_libraries(mpc_core PUBLIC sanitizers)
+    target_link_libraries(mpc_hm_prover PUBLIC sanitizers)
+    target_link_libraries(mpc_hm_verifier PUBLIC sanitizers)
+    target_link_libraries(hm_verifier PUBLIC sanitizers)
+    target_link_libraries(hm_prover PUBLIC sanitizers)
+endif()
+
 
 set_target_properties(
-    prover_mpc_sha256
-    verifier_mpc_sha256
+    hm_prover
+    hm_verifier
     PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
