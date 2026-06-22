@@ -10,6 +10,7 @@
 #include "MPC_SHA256.h"
 #include "MPC_arithmetic.h"
 #include "shared.h"
+#include "crypto.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
