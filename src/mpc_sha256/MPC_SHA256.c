@@ -20,16 +20,6 @@
 int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3],
                unsigned char *randomness[3], ViewsPtr views, int *countY);
 
-uint32_t rand32() {
-  uint32_t x;
-  x = rand() & 0xff;
-  x |= (rand() & 0xff) << 8;
-  x |= (rand() & 0xff) << 16;
-  x |= (rand() & 0xff) << 24;
-
-  return x;
-}
-
 void printbits(uint32_t n) {
   if (n) {
     printbits(n >> 1);
@@ -280,38 +270,9 @@ void commit(unsigned char shares[3][L_BYTES], unsigned char *randomness[3],
   commit_impl(shares, randomness, views_ptr);
 }
 
-void commit2(unsigned char shares[3][L_BYTES], unsigned char *randomness[3],
-             View2 views[3]) {
-
-  ViewsPtr views_ptr;
-  for (int j = 0; j < 3; j++) {
-    views_ptr.x[j] = views[j].x;
-    views_ptr.y[j] = views[j].y[0];
-  }
-
-  commit_impl(shares, randomness, views_ptr);
-  for (int j = 0; j < 3; j++) {
-    views_ptr.y[j] = views[j].y[1];
-  }
-  commit_impl(shares, randomness, views_ptr);
-}
-
 z prove(int e, unsigned char keys[3][16], unsigned char rs[3][4],
         View *views[3]) {
   z z;
-  memcpy(z.ke, keys[e], 16);
-  memcpy(z.ke1, keys[(e + 1) % 3], 16);
-  z.ve = views[e];
-  z.ve1 = views[(e + 1) % 3];
-  memcpy(z.re, rs[e], 4);
-  memcpy(z.re1, rs[(e + 1) % 3], 4);
-
-  return z;
-}
-
-z2 prove2(int e, unsigned char keys[3][16], unsigned char rs[3][4],
-          View2 views[3]) {
-  z2 z;
   memcpy(z.ke, keys[e], 16);
   memcpy(z.ke1, keys[(e + 1) % 3], 16);
   z.ve = views[e];

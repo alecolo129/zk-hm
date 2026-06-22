@@ -271,24 +271,3 @@ int verify(a *a, int e, z *z) {
   return 0;
 }
 
-/*
-int verify_hash2(a2 a, int e, z2 z) {
-
-  unsigned char *hash = malloc(SHA256_DIGEST_LENGTH);
-
-  H2(z.ke, z.ve, z.re, hash);
-  if (memcmp(a.h[e], hash, 32) != 0) {
-    LOG_ERRF("Hash verification failed");
-    return 1;
-  }
-
-  H2(z.ke1, z.ve1, z.re1, hash);
-  if (memcmp(a.h[(e + 1) % 3], hash, 32) != 0) {
-    LOG_ERRF("Hash verification failed");
-    return 1;
-  }
-
-  free(hash);
-  return 0;
-}
-*/

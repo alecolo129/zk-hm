@@ -13,7 +13,6 @@ set(UTILS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/utils)
 
 ### Shared components
 add_library(mpc_core
-    ${MPC_CORE_DIR}/shared.c
     ${MPC_CORE_DIR}/MPC_arithmetic.c
     ${MPC_UNIVERSAL_HASH_DIR}/MPC_universal_hash.c
     ${UTILS_DIR}/crypto.c

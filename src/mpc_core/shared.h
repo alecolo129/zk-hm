@@ -127,50 +127,10 @@ typedef struct {
   View ve1; // embedded bytes
 } z_disk;
 
-// TODO: This part needs to be updated
-// ---- pre-image equality => prove m : c1 = SHA256(m,r) & c2 = SHA256(m, r')
-// for some randomness r,r'
-
-#define y2Size L_WORDS // TODO: this is outdated
-
-// views
-typedef struct {
-  unsigned char x[64];  // secret input share = SHA256 input chunk (padded and
-                        // pre-processed)
-  uint32_t y[2][ySize]; // output share (i.e., all the ADD/AND commits + the
-                        // SHA256 output)
-} View2;
-
-// commitment
-typedef struct {
-  uint32_t yp[2][3][8];   // SHA256 output of each party
-  unsigned char h[3][32]; // SHA256 of each party's key and view with commitment
-                          // randomnes k
-} a2;
-
-// open
-// TODO: key and randomness should be different per each commit
-typedef struct {
-  // keys can be used by verifier to obtain random tapes
-  unsigned char ke[16];  // key party i
-  unsigned char ke1[16]; // key party i+1
-  View2 ve;              // view party i
-  View2 ve1;             // view party i+1
-  // randomness used in commitments
-  unsigned char re[4];
-  unsigned char re1[4];
-} z2;
-
 typedef struct {
   unsigned char *x[3];
   uint32_t *y[3];
 } ViewsPtr;
-
-typedef struct {
-  uint32_t *yp[3][8];      // SHA256 output of each party
-  unsigned char hà[3][32]; // SHA256 of each party's key and view with
-                           // commitment randomnes k
-} aPtr;
 
 #define RIGHTROTATE(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
 #define GETBIT(x, i) (((x) >> (i)) & 0x01)
@@ -206,14 +166,6 @@ static inline void load_u32_be(uint32_t *dst, const unsigned char *src) {
 static inline void load_u32_le(uint32_t *dst, const unsigned char *src) {
   *dst = ((uint32_t)src[3] << 24) | ((uint32_t)src[2] << 16) |
          ((uint32_t)src[1] << 8) | (uint32_t)src[0];
-}
-
-static inline void output2(View2 v[3], a2 *a) {
-  for (int c = 0; c < 2; c++) {
-    memcpy(a->yp[c][0], &v[0].y[c][ySize - 8], 32);
-    memcpy(a->yp[c][1], &v[1].y[c][ySize - 8], 32);
-    memcpy(a->yp[c][2], &v[2].y[c][ySize - 8], 32);
-  }
 }
 
 static inline void output(View *v, uint32_t *result) {
