@@ -1,9 +1,16 @@
-#include "MPC_arithmetic.h"
-#include "crypto.h"
+#include "mpc_arithmetic.h"
+#include "string.h"
+
+static inline uint32_t getRandom32(unsigned char randomness[RAND_BYTES],
+                                   int randCount) {
+  uint32_t ret;
+  memcpy(&ret, &randomness[randCount], 4);
+  return ret;
+}
 
 void mpc_ADD(uint32_t x[3], uint32_t y[3], uint32_t z[3],
-                  unsigned char *randomness[3], int *randCount,
-                  uint32_t *y_views[3], int *countY) {
+             unsigned char *randomness[3], int *randCount, uint32_t *y_views[3],
+             int *countY) {
   uint32_t c[3] = {0};
   uint32_t r[3] = {getRandom32(randomness[0], *randCount),
                    getRandom32(randomness[1], *randCount),
@@ -44,8 +51,8 @@ void mpc_ADD(uint32_t x[3], uint32_t y[3], uint32_t z[3],
 }
 
 void mpc_MAJ(uint32_t a[], uint32_t b[3], uint32_t c[3], uint32_t z[3],
-                  unsigned char *randomness[3], int *randCount,
-                  uint32_t *y_views[3], int *countY) {
+             unsigned char *randomness[3], int *randCount, uint32_t *y_views[3],
+             int *countY) {
   uint32_t t0[3];
   uint32_t t1[3];
 
@@ -56,8 +63,8 @@ void mpc_MAJ(uint32_t a[], uint32_t b[3], uint32_t c[3], uint32_t z[3],
 }
 
 void mpc_CH(uint32_t e[], uint32_t f[3], uint32_t g[3], uint32_t z[3],
-                 unsigned char *randomness[3], int *randCount,
-                 uint32_t *y_views[3], int *countY) {
+            unsigned char *randomness[3], int *randCount, uint32_t *y_views[3],
+            int *countY) {
   uint32_t t0[3];
 
   // e & (f^g) ^ g
@@ -67,8 +74,8 @@ void mpc_CH(uint32_t e[], uint32_t f[3], uint32_t g[3], uint32_t z[3],
 }
 
 void mpc_AND(uint32_t x[3], uint32_t y[3], uint32_t z[3],
-                  unsigned char *randomness[3], int *randCount,
-                  uint32_t *y_views[3], int *countY) {
+             unsigned char *randomness[3], int *randCount, uint32_t *y_views[3],
+             int *countY) {
   uint32_t r[3] = {getRandom32(randomness[0], *randCount),
                    getRandom32(randomness[1], *randCount),
                    getRandom32(randomness[2], *randCount)};
@@ -87,11 +94,9 @@ void mpc_AND(uint32_t x[3], uint32_t y[3], uint32_t z[3],
   (*countY)++;
 }
 
-
-
 int mpc_AND_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View *ve,
-                          View *ve1, unsigned char *randomness[2],
-                          int *randCount, int *countY) {
+                   View *ve1, unsigned char *randomness[2], int *randCount,
+                   int *countY) {
   uint32_t r[2] = {getRandom32(randomness[0], *randCount),
                    getRandom32(randomness[1], *randCount)};
   *randCount += 4;
@@ -100,7 +105,7 @@ int mpc_AND_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View *ve,
 
   t = (x[0] & y[1]) ^ (x[1] & y[0]) ^ (x[0] & y[0]) ^ r[0] ^ r[1];
   if (ve->y[*countY] != t) {
-    return 1;
+    return -1;
   }
   z[0] = t;
   z[1] = ve1->y[*countY];
@@ -110,8 +115,8 @@ int mpc_AND_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View *ve,
 }
 
 int mpc_ADD_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View *ve,
-                   View *ve1, unsigned char *randomness[2],
-                   int *randCount, int *countY) {
+                   View *ve1, unsigned char *randomness[2], int *randCount,
+                   int *countY) {
 
   uint32_t r[2] = {getRandom32(randomness[0], *randCount),
                    getRandom32(randomness[1], *randCount)};
@@ -131,7 +136,7 @@ int mpc_ADD_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View *ve,
     t = (a[0] & b[1]) ^ (a[1] & b[0]) ^ GETBIT(r[1], i);
     if (GETBIT(ve->y[*countY], i + 1) !=
         (t ^ (a[0] & b[0]) ^ GETBIT(ve->y[*countY], i) ^ GETBIT(r[0], i))) {
-      return 1;
+      return -1;
     }
   }
 
@@ -150,7 +155,7 @@ int mpc_MAJ_verify(uint32_t a[2], uint32_t b[2], uint32_t c[2], uint32_t z[3],
   mpc_XOR2(a, b, t0);
   mpc_XOR2(a, c, t1);
   if (mpc_AND_verify(t0, t1, z, ve, ve1, randomness, randCount, countY) == 1) {
-    return 1;
+    return -1;
   }
   mpc_XOR2(z, a, z);
   return 0;

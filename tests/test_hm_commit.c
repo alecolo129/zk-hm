@@ -1,4 +1,4 @@
-#include "MPC_universal_hash.h"
+#include "mpc_universal_hash.h"
 #include "openssl/rand.h"
 #include "shared.h"
 #include <crypto.h>
@@ -6,6 +6,13 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+static inline void printbits(uint32_t n) {
+  if (n) {
+    printbits(n >> 1);
+    printf("%d", n & 1);
+  }
+}
 
 typedef struct bit_commit {
   // commitment output
@@ -36,7 +43,7 @@ uint32_t verify_universal_hash(const UniversalHash H, const uint32_t r[L_WORDS],
 
 void hm_bit_comit(const uint8_t m, const uint32_t r[L_WORDS], uint8_t y[32],
                   uint32_t A[L_WORDS], uint8_t *b) {
-  MD((uint8_t *)r, L_BYTES, y);
+  SHA256((uint8_t *)r, L_BYTES, y);
 
   RAND_bytes((uint8_t *)A,
              L_BYTES); // TODO: can it be generated with PRG?
@@ -56,7 +63,7 @@ bool hm_bit_verify(const uint32_t m, const bit_commit *commit,
   MD((uint8_t *)r, L_BYTES, y_rec);
   for (int i = 0; i < 32; i++) {
     if (y_rec[i] != commit->y[i])
-      return false;
+      return -1;
   }
 
   // verify Ar + b - m = 0

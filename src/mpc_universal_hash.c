@@ -1,10 +1,11 @@
-#include "MPC_universal_hash.h"
-#include "MPC_arithmetic.h"
-#include "crypto.h"
+#include "mpc_universal_hash.h"
+#include "prg.h"
+#include "mpc_arithmetic.h"
 #include "shared.h"
 #include "stdbool.h"
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 void expand_A(uint32_t A[A_WORDS], const uint8_t keyA[16]) {
   EVP_CIPHER_CTX *ctx = setupAES(keyA);
@@ -53,7 +54,7 @@ void generate_H(uint32_t A[A_WORDS], uint8_t b[MSG_BYTES],
   }
 }
 
-void mpc_universal_hash_prover(const UniversalHash *h,
+void mpc_universal_hash_prove(const UniversalHash *h,
                                const uint32_t m[MSG_WORDS][3],
                                const uint32_t r[L_WORDS][3],
                                uint32_t y[MSG_WORDS][3]) {
@@ -80,11 +81,11 @@ void mpc_universal_hash_prover(const UniversalHash *h,
   }
 }
 
-bool mpc_universal_hash_verifier(const UniversalHash *h,
-                                 const uint32_t m[MSG_WORDS][2],
-                                 const uint32_t r[L_WORDS][2],
-                                 const uint32_t y[MSG_WORDS][3],
-                                 const uint32_t e) {
+int mpc_universal_hash_verify(const UniversalHash *h,
+                                const uint32_t m[MSG_WORDS][2],
+                                const uint32_t r[L_WORDS][2],
+                                const uint32_t y[MSG_WORDS][3],
+                                const uint32_t e) {
 
   for (int i = 0; i < MSG_BITS; i++) {
     uint32_t y_rec[2] = {0};
@@ -115,15 +116,15 @@ bool mpc_universal_hash_verifier(const UniversalHash *h,
     */
     if (yi[e] != y_rec[0] || yi[(e + 1) % 3] != y_rec[1]) {
       LOG_ERRF("mismatch between committed and reconsturcted bit %d!\n", i);
-      return false;
+      return -1;
     }
 
     if ((y_rec[0] ^ y_rec[1] ^ yi[(e + 2) % 3] ^ bi) != 0) {
       LOG_ERRF("result %d != 0!\n", y_rec[0] ^ y_rec[1] ^ yi[(e + 2) % 3] ^ bi);
-      return false;
+      return -1;
     }
   }
-  return true;
+  return 0;
 }
 
 void mpc_inner_prod_prover(const UniversalHash *h, const uint32_t m[3],
@@ -138,9 +139,9 @@ void mpc_inner_prod_prover(const UniversalHash *h, const uint32_t m[3],
   mpc_XOR((uint32_t *)m, y, y);
 }
 
-bool mpc_inner_prod_verify(const UniversalHash *h, const uint32_t m[2],
-                           const uint32_t r[L_WORDS][2], const uint32_t y[3],
-                           const uint32_t e) {
+int mpc_inner_prod_verify(const UniversalHash *h, const uint32_t m[2],
+                          const uint32_t r[L_WORDS][2], const uint32_t y[3],
+                          const uint32_t e) {
   uint32_t y_rec[2] = {0};
   uint32_t t1[2];
   for (int i = 0; i < L_WORDS; i++) {
@@ -150,10 +151,10 @@ bool mpc_inner_prod_verify(const UniversalHash *h, const uint32_t m[2],
   mpc_parity2(y_rec, y_rec);
   mpc_XOR2_const(y_rec, m, y_rec);
   if (y[e] != y_rec[0] || y[(e + 1) % 3] != y_rec[1]) {
-    printf("Failed at line %d\n", __LINE__);
-    return false;
+    LOG_ERRF("failed");
+    return -1;
   }
   mpc_XORK2(y_rec, h->b[0], y_rec);
 
-  return y_rec[0] ^ y_rec[1] ^ y[(e + 2) % 3] == 0;
+  return (y_rec[0] ^ y_rec[1] ^ y[(e + 2) % 3] == 0) ? 1 : 0;
 }

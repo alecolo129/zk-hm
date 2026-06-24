@@ -1,5 +1,5 @@
 
-#include "MPC_SHA256.h"
+#include "mpc_sha256_prover.h"
 #include "shared.h"
 #include <stdint.h>
 #include <stdio.h>
@@ -62,7 +62,7 @@ void test_vector(const unsigned char *msg, const char *expected_hex,
   unsigned char shares[3][L_BYTES];
   make_xor_shares(shares, msg);
 
-  commit(shares, randomness, rs, views);
+  mpc_sha256_commit(shares, randomness, rs, views);
 
   uint32_t digest[8];
   xor3_digest(digest, &views[0]->y[ySize - 8], &views[1]->y[ySize - 8],

@@ -142,7 +142,7 @@ static inline int mpc_CH_verify(uint32_t e[2], uint32_t f[2], uint32_t g[2],
   uint32_t t0[3];
   mpc_XOR2(f, g, t0);
   if (mpc_AND_verify(e, t0, t0, ve, ve1, randomness, randCount, countY) == 1) {
-    return 1;
+    return -1;
   }
   mpc_XOR2(t0, g, z);
 

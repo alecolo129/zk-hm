@@ -1,34 +1,51 @@
-/*
- ============================================================================
- Name        : MPC_SHA256.c
- Author      : Sobuno
- Version     : 0.1
- Description : MPC SHA256 for one block only
- ============================================================================
- */
-
-#include "MPC_SHA256.h"
-#include "MPC_arithmetic.h"
+#include "mpc_arithmetic.h"
+#include "mpc_sha256.h"
 #include "shared.h"
-#include "crypto.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3],
-               unsigned char *randomness[3], ViewsPtr views, int *countY);
+static int mpc_sha256_prove_impl(unsigned char *results[3],
+                                 unsigned char *inputs[3],
+                                 unsigned char *randomness[3], ViewsPtr views,
+                                 int *countY);
 
-void printbits(uint32_t n) {
-  if (n) {
-    printbits(n >> 1);
-    printf("%d", n & 1);
+void mpc_sha256_prove(unsigned char shares[3][L_BYTES],
+                      unsigned char *randomness[3], View *views[3]) {
+
+  // TODO: refactor and remove ViewsPtr
+  ViewsPtr views_ptr;
+  for (int j = 0; j < 3; j++) {
+    views_ptr.x[j] = views[j]->x;
+    views_ptr.y[j] = views[j]->y;
+  }
+
+  unsigned char *inputs[3];
+  inputs[0] = shares[0];
+  inputs[1] = shares[1];
+  inputs[2] = shares[2];
+
+  unsigned char buff[96];
+  unsigned char *hashes[3] = {buff, &buff[32], &buff[64]};
+
+  int countY = 0;
+  mpc_sha256_prove_impl(hashes, inputs, randomness, views_ptr, &countY);
+
+  // Explicitly add y to view
+  for (int i = 0; i < 8; i++) {
+    load_u32_be(&views_ptr.y[0][countY], &hashes[0][i * 4]);
+    load_u32_be(&views_ptr.y[1][countY], &hashes[1][i * 4]);
+    load_u32_be(&views_ptr.y[2][countY], &hashes[2][i * 4]);
+    countY += 1;
   }
 }
 
-int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3],
-               unsigned char *randomness[3], ViewsPtr views, int *countY) {
+static int mpc_sha256_prove_impl(unsigned char *results[3],
+                                 unsigned char *inputs[3],
+                                 unsigned char *randomness[3], ViewsPtr views,
+                                 int *countY) {
 
   int randCount = 0;
 
@@ -195,90 +212,4 @@ int mpc_sha256(unsigned char *results[3], unsigned char *inputs[3],
   }
 
   return 0;
-}
-
-int writeToFile(char filename[], void *data, int size, int numItems) {
-  FILE *file;
-
-  file = fopen(filename, "wb");
-  if (!file) {
-    printf("Unable to open file!");
-    return 1;
-  }
-  fwrite(data, size, numItems, file);
-  fclose(file);
-  return 0;
-}
-
-int secretShare(unsigned char *input, int numBytes,
-                unsigned char output[3][numBytes]) {
-  if (RAND_bytes(output[0], numBytes) != 1) {
-    printf("RAND_bytes failed crypto, aborting\n");
-  }
-  if (RAND_bytes(output[1], numBytes) != 1) {
-    printf("RAND_bytes failed crypto, aborting\n");
-  }
-  for (int j = 0; j < numBytes; j++) {
-    output[2][j] = input[j] ^ output[0][j] ^ output[1][j];
-  }
-  return 0;
-}
-
-void generate_randomness(unsigned char keys[3][16],
-                         unsigned char *randomness[3]) {
-  for (int j = 0; j < 3; j++) {
-    // Note: In the MPC protocol we need 32 bit of randomness for each ADD/AND
-    // operation in SHA256 (operates on 32bit words). We have 64 AND gates and
-    // 664 ADD gates, so we need 728 * 32 / 8 = 2912 bytes of randomness.
-    getAllRandomness(keys[j], randomness[j]);
-  }
-}
-
-void commit_impl(unsigned char shares[3][L_BYTES], unsigned char *randomness[3],
-                 ViewsPtr views) {
-
-  unsigned char *inputs[3];
-  inputs[0] = shares[0];
-  inputs[1] = shares[1];
-  inputs[2] = shares[2];
-
-  unsigned char *buff = malloc(96);
-  unsigned char *hashes[3] = {buff, &buff[32], &buff[64]};
-
-  int countY = 0;
-  mpc_sha256(hashes, inputs, randomness, views, &countY);
-
-  // Explicitly add y to view
-  for (int i = 0; i < 8; i++) {
-    load_u32_be(&views.y[0][countY], &hashes[0][i * 4]);
-    load_u32_be(&views.y[1][countY], &hashes[1][i * 4]);
-    load_u32_be(&views.y[2][countY], &hashes[2][i * 4]);
-    countY += 1;
-  }
-  free(buff);
-}
-
-void commit(unsigned char shares[3][L_BYTES], unsigned char *randomness[3],
-            unsigned char rs[3][4], View *views[3]) {
-
-  ViewsPtr views_ptr;
-  for (int j = 0; j < 3; j++) {
-    views_ptr.x[j] = views[j]->x;
-    views_ptr.y[j] = views[j]->y;
-  }
-
-  commit_impl(shares, randomness, views_ptr);
-}
-
-z prove(int e, unsigned char keys[3][16], unsigned char rs[3][4],
-        View *views[3]) {
-  z z;
-  memcpy(z.ke, keys[e], 16);
-  memcpy(z.ke1, keys[(e + 1) % 3], 16);
-  z.ve = views[e];
-  z.ve1 = views[(e + 1) % 3];
-  memcpy(z.re, rs[e], 4);
-  memcpy(z.re1, rs[(e + 1) % 3], 4);
-
-  return z;
 }

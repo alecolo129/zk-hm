@@ -1,24 +1,10 @@
-/*
-============================================================================
-Name        : shared.h
-Author      : Sobuno
-Version     : 0.1
-Description : Common functions for the SHA-256 prover and verifier
-============================================================================
-*/
-
-#ifndef SHARED_H_
-#define SHARED_H_
+#pragma once
 #include <openssl/conf.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
-#include <openssl/sha.h>
-#ifdef _WIN32
-#include <openssl/applink.c>
-#endif
 #include <openssl/rand.h>
+#include <openssl/sha.h>
 #include <stdint.h>
-#include <string.h>
 
 #ifdef VERBOSE
 #define LOG_ERRF(fmt, ...)                                                     \
@@ -33,47 +19,33 @@ Description : Common functions for the SHA-256 prover and verifier
 #define LOG_ERRF(fmt, ...)
 #endif
 
-/* A 128 bit IV for randomness generation */
-static const unsigned char iv[17] = "0123456789012345";
-
-static const uint32_t hA[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-                               0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
-
-static const uint32_t k[64] = {
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
-    0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
-    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
-    0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
-    0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
-    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
-    0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
-    0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
-    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
-
 // Security parameters
 
 /* Number of repetition to achieve desired soundness error.
  * With 136 round, soundness error = 2^{-80}*/
 #define NUM_ROUNDS 136
+
 /* Number of bits of the comitted message. */
-#define MSG_BITS 100000u
+#define MSG_BITS 1u
 #define MSG_WORDS ((MSG_BITS + 31) / 32)
 #define MSG_BYTES ((MSG_BITS + 7) / 8)
+
 /* Bindness security parameter, we have k/2 of collision resistance.
  * Note: For bit commitments, we save 1 SHA block if we accept k=238 (i.e., 119
  * bits of collision resistance).
  */
 #define K 256
-/* Reuired length of the Halevi-Micali random vector 'r' (i.e., the opening). */
-#define L_BITS (4 * K + 2 * MSG_BITS + 4)
+
+/* Required length of the Halevi-Micali random vector 'r' (i.e., the opening). */
+#define L_BITS ((((4 * K + 2 * MSG_BITS + 4) + 31) / 32) * 32) // word -alligned
 #define L_BYTES (L_BITS / 8)
-#define L_WORDS (L_BITS / 32)
-/* Reuired number of SHA256 blocks to hash the committed vector 'r'. */
+#define L_WORDS ((L_BYTES + 3) / 4)
+
+/* Required number of SHA256 blocks to hash the committed vector 'r'. */
 #define NUM_SHA256_BLOCKS                                                      \
   ((L_BITS + 1 + 64 + 511) / 512) // ceil((L + 1 + 54) / 512)
-/* Reuired number of random bytes to proof knowledge of the committed message.
+
+/* Required number of random bytes to proof knowledge of the committed message.
  * Note: for each SHA256 block we need 2912 bytes of randomness */
 #define RAND_BYTES (2912 * NUM_SHA256_BLOCKS)
 /* Size of the circuit output in 32-bit words.
@@ -86,6 +58,7 @@ static const uint32_t k[64] = {
 #define A_BYTES (A_ROWS + L_WORDS + 1) * 4
 
 typedef struct {
+  uint8_t keyA[16]; // PRG key used to generate random matrix A
   uint32_t A[A_WORDS]; // Toeplitz matrix
   uint8_t b[MSG_BYTES];
 } UniversalHash;
@@ -98,13 +71,20 @@ typedef struct {
                      // output)
 } View;
 
+// TODO: remove
+typedef struct {
+  unsigned char *x[3];
+  uint32_t *y[3];
+} ViewsPtr;
+
 // commitment
 typedef struct {
-  uint32_t yp[3][8]; // SHA256 output of each party
-  uint32_t y2p[MSG_WORDS][3];
+  uint32_t yp[3][8]; // SHA256 output of each party (output shares of MD(r))
+  uint32_t y2p[MSG_WORDS][3]; // Commitment to zero (output shares of h(r) ^ m
+                              // where h is UHF)
   unsigned char h[3][32]; // SHA256 of each party's key and view with commitment
                           // randomnes k
-} a;
+} ZkBooCommit;
 
 // open
 typedef struct {
@@ -116,7 +96,7 @@ typedef struct {
   // randomness used in commitments
   unsigned char re[4];
   unsigned char re1[4];
-} z;
+} ZkBooOpen;
 
 typedef struct {
   unsigned char ke[16];
@@ -125,12 +105,7 @@ typedef struct {
   unsigned char re1[4];
   View ve;  // embedded bytes
   View ve1; // embedded bytes
-} z_disk;
-
-typedef struct {
-  unsigned char *x[3];
-  uint32_t *y[3];
-} ViewsPtr;
+} ZkBooOpenDisk;
 
 #define RIGHTROTATE(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
 #define GETBIT(x, i) (((x) >> (i)) & 0x01)
@@ -167,16 +142,3 @@ static inline void load_u32_le(uint32_t *dst, const unsigned char *src) {
   *dst = ((uint32_t)src[3] << 24) | ((uint32_t)src[2] << 16) |
          ((uint32_t)src[1] << 8) | (uint32_t)src[0];
 }
-
-static inline void output(View *v, uint32_t *result) {
-  memcpy(result, &v->y[ySize - 8], 32);
-}
-
-static inline void reconstruct(uint32_t *y0, uint32_t *y1, uint32_t *y2,
-                               uint32_t *result) {
-  for (int i = 0; i < 8; i++) {
-    result[i] = y0[i] ^ y1[i] ^ y2[i];
-  }
-}
-
-#endif /* SHARED_H_ */

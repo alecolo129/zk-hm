@@ -1,8 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
-project(HM_MPC C)
+project(HM_MPC C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Options
@@ -32,8 +36,60 @@ endif()
 find_package(OpenMP REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-# Add subdirectories
-add_subdirectory(src)
+
+
+# Internal implementation target.
+# Tests can link against this target to access internal headers/functions.
+add_library(hm_mpc_internal OBJECT
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mpc_sha256_prover.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mpc_sha256_verifier.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mpc_arithmetic.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mpc_universal_hash.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mpc_halevi_micali.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/random_oracle.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/prg.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/hm_buffer.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/thread_state.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/hm_impl.c
+)
+target_include_directories(hm_mpc_internal
+  PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+### Enable debugging info
+if(VERBOSE)
+  target_compile_definitions(hm_mpc_internal PUBLIC VERBOSE)
+endif()
+
+### Enable address sanitizer
+if(ENABLE_SANITIZERS)
+  target_link_libraries(hm_mpc_internal PUBLIC sanitizers)
+endif()
+
+target_link_libraries(hm_mpc_internal
+  PUBLIC
+    OpenMP::OpenMP_C
+    OpenMP::OpenMP_CXX
+    OpenSSL::Crypto
+)
+
+# Public library wrapper.
+# External callers link this target and only get the public headers.
+add_library(hm_mpc STATIC
+  $<TARGET_OBJECTS:hm_mpc_internal>
+)
+target_include_directories(hm_mpc
+  PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+target_link_libraries(hm_mpc
+  PUBLIC
+    OpenMP::OpenMP_C
+    OpenMP::OpenMP_CXX
+    OpenSSL::Crypto
+)
 
 enable_testing()
 add_subdirectory(tests)

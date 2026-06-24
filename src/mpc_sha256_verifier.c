@@ -1,44 +1,28 @@
-#include "MPC_SHA256_VERIFIER.h"
-#include "MPC_arithmetic.h"
+#include "mpc_sha256.h"
+#include "mpc_arithmetic.h"
+#include "mpc_core_funcs.h"
 #include "shared.h"
 #include "stdbool.h"
-#include <crypto.h>
+#include <random_oracle.h>
+#include <prg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-bool verify_hash(a *a, int e, z *z) {
-
-  unsigned char hash[SHA256_DIGEST_LENGTH];
-  H(z->ke, z->ve, z->re, hash);
-  if (memcmp(a->h[e], hash, 32) != 0) {
-    LOG_ERRF("Hash verification failed");
-    return false;
-  }
-
-  H(z->ke1, z->ve1, z->re1, hash);
-  if (memcmp(a->h[(e + 1) % 3], hash, 32) != 0) {
-    LOG_ERRF("Hash verification failed");
-    return false;
-  }
-
-  return true;
-}
-
-int verify(a *a, int e, z *z) {
+int mpc_sha256_verify(ZkBooCommit *a, int e, ZkBooOpen *z) {
 
   uint32_t *result = malloc(32);
   output(z->ve, result);
   if (memcmp(a->yp[e], result, 32) != 0) {
     LOG_ERRF("Committed outputs inconsistent with opening");
-    return 1;
+    return -1;
   }
 
   output(z->ve1, result);
   if (memcmp(a->yp[(e + 1) % 3], result, 32) != 0) {
     LOG_ERRF("Committed outputs inconsistent with opening");
-    return 1;
+    return -1;
   }
 
   free(result);
@@ -100,18 +84,18 @@ int verify(a *a, int e, z *z) {
       if (mpc_ADD_verify(w[j - 16], s0, t1, z->ve, z->ve1, randomness,
                          &randCount, &countY) == 1) {
         LOG_ERRF("MPC verification failed, iteration %d", j);
-        return 1;
+        return -1;
       }
 
       if (mpc_ADD_verify(w[j - 7], t1, t1, z->ve, z->ve1, randomness,
                          &randCount, &countY) == 1) {
         LOG_ERRF("MPC verification failed, iteration %d", j);
-        return 1;
+        return -1;
       }
       if (mpc_ADD_verify(t1, s1, w[j], z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
         LOG_ERRF("MPC verification failed, iteration %d", j);
-        return 1;
+        return -1;
       }
     }
     uint32_t va[2], vb[2], vc[2], vd[2], ve[2], vf[2], vg[2], vh[2];
@@ -142,20 +126,20 @@ int verify(a *a, int e, z *z) {
                          &countY) == 1) {
 
         LOG_ERRF("MPC verification failed, iteration %d", i);
-        return 1;
+        return -1;
       }
 
       if (mpc_CH_verify(ve, vf, vg, t1, z->ve, z->ve1, randomness, &randCount,
                         &countY) == 1) {
         LOG_ERRF("MPC verification failed, iteration %d", i);
-        return 1;
+        return -1;
       }
 
       // t1 = t0 + t1 (h+s1+ch)
       if (mpc_ADD_verify(t0, t1, t1, z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
         LOG_ERRF("MPC verification failed, iteration %d", i);
-        return 1;
+        return -1;
       }
 
       t0[0] = k[i];
@@ -163,13 +147,13 @@ int verify(a *a, int e, z *z) {
       if (mpc_ADD_verify(t1, t0, t1, z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
         LOG_ERRF("MPC verification failed, iteration %d", i);
-        return 1;
+        return -1;
       }
 
       if (mpc_ADD_verify(t1, w[i], temp1, z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
         LOG_ERRF("MPC verification failed, iteration %d", i);
-        return 1;
+        return -1;
       }
 
       // s0 = RIGHTROTATE(a,2) ^ RIGHTROTATE(a,13) ^ RIGHTROTATE(a,22);
@@ -185,14 +169,14 @@ int verify(a *a, int e, z *z) {
       if (mpc_MAJ_verify(va, vb, vc, maj, z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
         LOG_ERRF("MPC verification failed, iteration %d", i);
-        return 1;
+        return -1;
       }
 
       // temp2 = s0+maj;
       if (mpc_ADD_verify(s0, maj, temp2, z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
         LOG_ERRF("MPC verification failed, iteration %d", i);
-        return 1;
+        return -1;
       }
 
       memcpy(vh, vg, sizeof(vh));
@@ -202,7 +186,7 @@ int verify(a *a, int e, z *z) {
       if (mpc_ADD_verify(vd, temp1, ve, z->ve, z->ve1, randomness, &randCount,
                          &countY) == 1) {
         LOG_ERRF("MPC verification failed, iteration %d", i);
-        return 1;
+        return -1;
       }
 
       memcpy(vd, vc, sizeof(vd));
@@ -213,61 +197,61 @@ int verify(a *a, int e, z *z) {
       if (mpc_ADD_verify(temp1, temp2, va, z->ve, z->ve1, randomness,
                          &randCount, &countY) == 1) {
         LOG_ERRF("MPC verification failed, iteration %d", i);
-        return 1;
+        return -1;
       }
     }
 
     if (mpc_ADD_verify(H[0], va, H[0], z->ve, z->ve1, randomness, &randCount,
                        &countY) == 1) {
       LOG_ERRF("MPC verification failed");
-      return 1;
+      return -1;
     }
     if (mpc_ADD_verify(H[1], vb, H[1], z->ve, z->ve1, randomness, &randCount,
                        &countY) == 1) {
       LOG_ERRF("MPC verification failed");
-      return 1;
+      return -1;
     }
     if (mpc_ADD_verify(H[2], vc, H[2], z->ve, z->ve1, randomness, &randCount,
                        &countY) == 1) {
       LOG_ERRF("MPC verification failed");
-      return 1;
+      return -1;
     }
     if (mpc_ADD_verify(H[3], vd, H[3], z->ve, z->ve1, randomness, &randCount,
                        &countY) == 1) {
       LOG_ERRF("MPC verification failed");
-      return 1;
+      return -1;
     }
     if (mpc_ADD_verify(H[4], ve, H[4], z->ve, z->ve1, randomness, &randCount,
                        &countY) == 1) {
       LOG_ERRF("MPC verification failed");
-      return 1;
+      return -1;
     }
     if (mpc_ADD_verify(H[5], vf, H[5], z->ve, z->ve1, randomness, &randCount,
                        &countY) == 1) {
       LOG_ERRF("MPC verification failed");
-      return 1;
+      return -1;
     }
     if (mpc_ADD_verify(H[6], vg, H[6], z->ve, z->ve1, randomness, &randCount,
                        &countY) == 1) {
       LOG_ERRF("MPC verification failed");
-      return 1;
+      return -1;
     }
     if (mpc_ADD_verify(H[7], vh, H[7], z->ve, z->ve1, randomness, &randCount,
                        &countY) == 1) {
       LOG_ERRF("MPC verification failed");
-      return 1;
+      return -1;
     }
   }
 
   for (int i = 0; i < 8; i++) {
     if ((H[i][0] != a->yp[e][i]) || (H[i][1] != a->yp[(e + 1) % 3][i])) {
       LOG_ERRF("Reconstructed output shares don't match commitment");
-      return 1;
+      return -1;
     }
   }
 
   free(randomness[0]);
-
+  free(padded[0]);
+  free(padded[1]);
   return 0;
 }
-

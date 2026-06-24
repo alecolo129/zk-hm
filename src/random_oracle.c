@@ -1,45 +1,5 @@
-#include "crypto.h"
-
-EVP_CIPHER_CTX *setupAES(const unsigned char key[16]) {
-  EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-  if (ctx == NULL)
-    handleErrors();
-
-  if (1 != EVP_EncryptInit_ex(ctx, EVP_aes_128_ctr(), NULL, key, iv))
-    handleErrors();
-
-  return ctx;
-}
-
-void getAllRandomness(unsigned char key[16],
-                      unsigned char randomness[RAND_BYTES]) {
-  // Generate randomness: We use SHA256_ROUNDS * (728*32) = SHA256_ROUNDS * 2912
-  // bit of randomness per key.
-
-  EVP_CIPHER_CTX *ctx = setupAES(key);
-
-  // TODO: define 4096 as AES chunk constant
-  unsigned char plaintext[4096] = {0};
-  size_t outlen = RAND_BYTES;
-  while (outlen) {
-    int chunk =
-        (outlen > sizeof(plaintext)) ? (int)sizeof(plaintext) : (int)outlen;
-    int produced = 0;
-    if (1 != EVP_EncryptUpdate(ctx, randomness, &produced, plaintext, chunk)) {
-      handleErrors();
-    }
-    randomness += produced;
-    outlen -= (size_t)produced;
-  }
-
-  EVP_CIPHER_CTX_free(ctx);
-}
-
-uint32_t getRandom32(unsigned char randomness[RAND_BYTES], int randCount) {
-  uint32_t ret;
-  memcpy(&ret, &randomness[randCount], 4);
-  return ret;
-}
+#include "random_oracle.h"
+#include "string.h"
 
 EVP_MD_CTX *setupSHA256() {
   EVP_MD_CTX *ctx = EVP_MD_CTX_new();
@@ -49,11 +9,6 @@ EVP_MD_CTX *setupSHA256() {
   if (1 != EVP_DigestInit_ex(ctx, EVP_sha256(), NULL))
     handleErrors();
   return ctx;
-}
-
-void MD(const unsigned char *r, uint32_t r_len,
-        unsigned char hash[SHA256_DIGEST_LENGTH]) {
-  SHA256(r, r_len, hash);
 }
 
 void H(unsigned char k[16], View *v, unsigned char r[4],
@@ -77,10 +32,10 @@ void HH(EVP_MD_CTX *ctx, unsigned char k[16], View *v, unsigned char r[4],
   EVP_DigestFinal_ex(ctx, hash, &outlen);
 }
 
-void H3(EVP_MD_CTX *ctx, uint32_t y[8], a *as, int s, int *es) {
+void H3(EVP_MD_CTX *ctx, uint32_t y[8], ZkBooCommit *as, int s, int *es) {
   unsigned char hash[SHA256_DIGEST_LENGTH];
   EVP_DigestUpdate(ctx, y, 32);
-  EVP_DigestUpdate(ctx, as, sizeof(a) * s);
+  EVP_DigestUpdate(ctx, as, sizeof(ZkBooCommit) * s);
   uint32_t outlen = 0;
   EVP_DigestFinal_ex(ctx, hash, &outlen);
 

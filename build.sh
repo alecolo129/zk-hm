@@ -28,8 +28,8 @@ do
 done
 
 if [[ -v sanitize ]]; then
-  cmake -S . -B build -G Ninja -DENABLE_SANITIZERS=ON
+  cmake -S . -B build -G Ninja -DVERBOSE=OFF -DENABLE_SANITIZERS=ON
 else
-  cmake -S . -B build -G Ninja
+  cmake -S . -B build -G Ninja -DVERBOSE=OFF
 fi
 cmake --build build
