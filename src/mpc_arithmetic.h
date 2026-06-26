@@ -130,7 +130,7 @@ int mpc_ADD_verify(uint32_t x[2], uint32_t y[2], uint32_t z[2], View *ve,
                    View *ve1, unsigned char *randomness[2], int *randCount,
                    int *countY);
 
-int mpc_MAJ_verify(uint32_t a[2], uint32_t b[2], uint32_t c[2], uint32_t z[3],
+int mpc_MAJ_verify(uint32_t a[2], uint32_t b[2], uint32_t c[2], uint32_t z[2],
                    View *ve, View *ve1, unsigned char *randomness[2],
                    int *randCount, int *countY);
 
@@ -139,9 +139,9 @@ static inline int mpc_CH_verify(uint32_t e[2], uint32_t f[2], uint32_t g[2],
                                 unsigned char *randomness[2], int *randCount,
                                 int *countY) {
 
-  uint32_t t0[3];
+  uint32_t t0[2];
   mpc_XOR2(f, g, t0);
-  if (mpc_AND_verify(e, t0, t0, ve, ve1, randomness, randCount, countY) == 1) {
+  if (mpc_AND_verify(e, t0, t0, ve, ve1, randomness, randCount, countY) != 0) {
     return -1;
   }
   mpc_XOR2(t0, g, z);
