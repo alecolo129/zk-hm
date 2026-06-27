@@ -16,6 +16,7 @@ add_compile_options(-march=native)
 option(VERBOSE "Print debug messages" ON)
 option(ENABLE_SANITIZERS "Enable ASan/UBSan" OFF)
 option(HM_MPC_BUILD_TESTS "Build tests" OFF)
+option(HM_MPC_BUILD_EXAMPLES "Build example programs" OFF)
 
 if(ENABLE_SANITIZERS)
   add_library(sanitizers INTERFACE)
@@ -101,4 +102,8 @@ if(HM_MPC_BUILD_TESTS)
 
   enable_testing()
   add_subdirectory(tests)
+endif()
+
+if(HM_MPC_BUILD_EXAMPLES)
+  add_subdirectory(examples)
 endif()
