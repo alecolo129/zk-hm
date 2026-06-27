@@ -3,7 +3,7 @@
 
 typedef struct ProverThreadState {
   // Shares reused each repetion of the zk-proof
-  uint8_t rShares[3][L_BYTES];
+  RVec rShares[3];
   uint32_t msgShares[MSG_WORDS][3];
 
   // Randomness tapes (3 pointers into one block)

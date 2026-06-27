@@ -4,7 +4,14 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
+#include <stddef.h>
 #include <stdint.h>
+#include <string.h>
+
+#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) &&             \
+    __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
+#error "Big-endian machines are currently not supported"
+#endif
 
 #ifdef VERBOSE
 #define LOG_ERRF(fmt, ...)                                                     \
@@ -37,13 +44,19 @@
 #define K 256
 
 /* Required length of the Halevi-Micali random vector 'r' (i.e., the opening). */
-#define L_BITS ((((4 * K + 2 * MSG_BITS + 4) + 31) / 32) * 32) // word -alligned
-#define L_BYTES (L_BITS / 8)
-#define L_WORDS ((L_BYTES + 3) / 4)
+#define L_BITS (4 * K + 2 * MSG_BITS + 4)
+#define L_BYTES ((L_BITS + 7) / 8)
+#define L_WORDS ((L_BITS + 31) / 32)
+#define L_LAST_BYTE_MASK                                                       \
+  ((uint8_t)(((L_BITS % 8) == 0) ? 0xffu : ((1u << (L_BITS % 8)) - 1u)))
+#define L_LAST_WORD_MASK                                                       \
+  ((uint32_t)(((L_BITS % 32) == 0) ? 0xffffffffu                               \
+                                      : ((1ULL << (L_BITS % 32)) - 1ULL)))
+#define SHA256_INPUT_BITS (8u * L_BYTES)
 
-/* Required number of SHA256 blocks to hash the committed vector 'r'. */
+/* Required number of SHA256 blocks to hash the byte encoding of 'r'. */
 #define NUM_SHA256_BLOCKS                                                      \
-  ((L_BITS + 1 + 64 + 511) / 512) // ceil((L + 1 + 54) / 512)
+  ((SHA256_INPUT_BITS + 1 + 64 + 511) / 512)
 
 /* Required number of random bytes to proof knowledge of the committed message.
  * Note: for each SHA256 block we need 2912 bytes of randomness */
@@ -63,17 +76,59 @@ typedef struct {
   uint8_t b[MSG_BYTES];
 } UniversalHash;
 
+/*
+ * Word-backed representation of the Halevi-Micali random vector.
+ *
+ * The first L_BYTES bytes, as exposed by rvec_bytes(), are the canonical byte
+ * string hashed by SHA-256 and returned as the opening. Universal hashing reads
+ * the same storage through little-endian uint32_t words. This zero-copy view
+ * assumes a little-endian machine; big-endian targets must use explicit byte
+ * conversion instead.
+ */
+typedef struct {
+  uint32_t words[L_WORDS];
+} RVec;
+
+static inline uint8_t *rvec_bytes(RVec *r) {
+  return (uint8_t *)r->words;
+}
+
+static inline const uint8_t *rvec_const_bytes(const RVec *r) {
+  return (const uint8_t *)r->words;
+}
+
+static inline void rvec_mask_last_word(RVec *r) {
+  r->words[L_WORDS - 1] &= L_LAST_WORD_MASK;
+}
+
+static inline void rvec_clear_padding(RVec *r) {
+  if (L_BYTES < sizeof(r->words)) {
+    memset(rvec_bytes(r) + L_BYTES, 0, sizeof(r->words) - L_BYTES);
+  }
+}
+
+static inline void rvec_normalize(RVec *r) {
+  rvec_mask_last_word(r);
+  rvec_clear_padding(r);
+}
+
+static inline void rvec_from_bytes(RVec *dst, const uint8_t src[L_BYTES]) {
+  memset(dst, 0, sizeof(*dst));
+  memcpy(rvec_bytes(dst), src, L_BYTES);
+  rvec_normalize(dst);
+}
+
 // views
 typedef struct {
-  unsigned char x[L_BYTES]; // secret input share = SHA256 input
-  uint8_t msg[MSG_BYTES];   // share of the committed message
+  RVec x; // secret input share = SHA256 input
+  uint8_t msg[MSG_WORDS * 4]; // share of the committed message
   uint32_t y[ySize]; // output share (i.e., all the ADD/AND commits + the SHA256
                      // output)
 } View;
 
 // TODO: remove
 typedef struct {
-  unsigned char *x[3];
+  RVec *x[3];
   uint32_t *y[3];
 } ViewsPtr;
 

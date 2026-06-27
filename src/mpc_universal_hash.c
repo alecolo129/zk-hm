@@ -35,9 +35,13 @@ static inline uint32_t load_window32(const uint32_t *A, int idx,
   return (uint32_t)(lane >> rShift);
 }
 
+static inline uint32_t mask_l_word(uint32_t word, int idx) {
+  return (idx == L_WORDS - 1) ? (word & L_LAST_WORD_MASK) : word;
+}
+
 void generate_H(uint32_t A[A_WORDS], uint8_t b[MSG_BYTES],
                 const uint8_t keyH[16], const uint8_t m[MSG_BYTES],
-                const uint32_t r[L_WORDS]) {
+                const RVec *r) {
   expand_A(A, keyH);
   for (int i = 0; i < MSG_BITS; i++) {
     uint32_t rShift = i % 32;
@@ -46,7 +50,8 @@ void generate_H(uint32_t A[A_WORDS], uint8_t b[MSG_BYTES],
     // b[i] = A[i..i+L) * r[0..L) - m[i]
     uint32_t acc = 0;
     for (int j = 0; j < L_WORDS; j++) {
-      acc ^= load_window32(A, base + j, rShift) & r[j];
+      acc ^= load_window32(A, base + j, rShift) &
+             mask_l_word(r->words[j], j);
     }
     uint32_t bi = __builtin_parity(acc);
     bi ^= GETBIT(m[i / 8], i % 8);
@@ -56,7 +61,7 @@ void generate_H(uint32_t A[A_WORDS], uint8_t b[MSG_BYTES],
 
 void mpc_universal_hash_prove(const UniversalHash *h,
                                const uint32_t m[MSG_WORDS][3],
-                               const uint32_t r[L_WORDS][3],
+                               const RVec r[3],
                                uint32_t y[MSG_WORDS][3]) {
   memset(y, 0, 3 * MSG_WORDS * sizeof(uint32_t));
   for (int i = 0; i < MSG_BITS; i++) {
@@ -67,7 +72,10 @@ void mpc_universal_hash_prove(const UniversalHash *h,
 
     for (int j = 0; j < L_WORDS; j++) {
       uint32_t A_ij = load_window32(h->A, wordIdx + j, bitIdx);
-      mpc_ANDK(r[j], A_ij, t1);
+      uint32_t rj[3] = {mask_l_word(r[0].words[j], j),
+                        mask_l_word(r[1].words[j], j),
+                        mask_l_word(r[2].words[j], j)};
+      mpc_ANDK(rj, A_ij, t1);
       mpc_XOR(yi, t1, yi);
     }
     mpc_parity(yi, yi);
@@ -83,7 +91,7 @@ void mpc_universal_hash_prove(const UniversalHash *h,
 
 int mpc_universal_hash_verify(const UniversalHash *h,
                                 const uint32_t m[MSG_WORDS][2],
-                                const uint32_t r[L_WORDS][2],
+                                const RVec r[2],
                                 const uint32_t y[MSG_WORDS][3],
                                 const uint32_t e) {
 
@@ -96,7 +104,9 @@ int mpc_universal_hash_verify(const UniversalHash *h,
     /* y_rec = A[i] * r */
     for (int j = 0; j < L_WORDS; j++) {
       uint32_t A_ij = load_window32(h->A, wordIdx + j, bitIdx);
-      mpc_ANDK2(r[j], A_ij, t1);
+      uint32_t rj[2] = {mask_l_word(r[0].words[j], j),
+                        mask_l_word(r[1].words[j], j)};
+      mpc_ANDK2(rj, A_ij, t1);
       mpc_XOR2_const(y_rec, t1, y_rec);
     }
     mpc_parity2(y_rec, y_rec);
@@ -127,12 +137,15 @@ int mpc_universal_hash_verify(const UniversalHash *h,
   return 0;
 }
 
-void mpc_inner_prod_prover(const UniversalHash *h, const uint32_t m[3],
-                           const uint32_t r[L_WORDS][3], uint32_t y[3]) {
+void mpc_inner_prod_prove(const UniversalHash *h, const uint32_t m[3],
+                          const RVec r[3], uint32_t y[3]) {
   uint32_t t1[3] = {0};
   memset(y, 0, 3 * sizeof(uint32_t));
   for (int i = 0; i < L_WORDS; i++) {
-    mpc_ANDK(r[i], h->A[i], t1);
+    uint32_t ri[3] = {mask_l_word(r[0].words[i], i),
+                      mask_l_word(r[1].words[i], i),
+                      mask_l_word(r[2].words[i], i)};
+    mpc_ANDK(ri, h->A[i], t1);
     mpc_XOR(y, t1, y);
   }
   mpc_parity(y, y);
@@ -140,12 +153,14 @@ void mpc_inner_prod_prover(const UniversalHash *h, const uint32_t m[3],
 }
 
 int mpc_inner_prod_verify(const UniversalHash *h, const uint32_t m[2],
-                          const uint32_t r[L_WORDS][2], const uint32_t y[3],
+                          const RVec r[2], const uint32_t y[3],
                           const uint32_t e) {
   uint32_t y_rec[2] = {0};
   uint32_t t1[2];
   for (int i = 0; i < L_WORDS; i++) {
-    mpc_ANDK2(r[i], h->A[i], t1);
+    uint32_t ri[2] = {mask_l_word(r[0].words[i], i),
+                      mask_l_word(r[1].words[i], i)};
+    mpc_ANDK2(ri, h->A[i], t1);
     mpc_XOR2_const(y_rec, t1, y_rec);
   }
   mpc_parity2(y_rec, y_rec);
@@ -154,7 +169,7 @@ int mpc_inner_prod_verify(const UniversalHash *h, const uint32_t m[2],
     LOG_ERRF("failed");
     return -1;
   }
-  mpc_XORK2(y_rec, h->b[0], y_rec);
 
-  return (y_rec[0] ^ y_rec[1] ^ y[(e + 2) % 3] == 0) ? 1 : 0;
+  return (y_rec[0] ^ y_rec[1] ^ y[(e + 2) % 3] ^ (h->b[0] & 1)) == 0 ? 0
+                                                                        : -1;
 }

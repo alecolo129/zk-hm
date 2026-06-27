@@ -23,8 +23,8 @@ static const uint32_t k[64] = {
     0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
     0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
 
-void mpc_sha256_prove(unsigned char shares[3][L_BYTES],
-                      unsigned char *randomness[3], View *views[3]);
+void mpc_sha256_prove(const RVec shares[3], unsigned char *randomness[3],
+                      View *views[3]);
 
 int mpc_sha256_verify(ZkBooCommit *commit, int e, ZkBooOpen *open);
 

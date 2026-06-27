@@ -7,19 +7,6 @@
 #include <string.h>
 #include <unistd.h>
 
-static inline void bytes_to_words(uint32_t *dst, const uint8_t *src,
-                                  size_t n_bytes) {
-  size_t n_words = n_bytes / 4;
-
-  memcpy(dst, src, n_words * sizeof(uint32_t));
-
-  size_t rem = n_bytes % 4;
-  if (rem != 0) {
-    dst[n_words] = 0;
-    memcpy(&dst[n_words], src + 4 * n_words, rem);
-  }
-}
-
 static inline int read_universal_hash(const uint8_t *commitment,
                                       size_t commitment_len, UniversalHash *H) {
   if (commitment_len != 16 + sizeof(H->b) + SHA256_DIGEST_LENGTH) {
@@ -48,9 +35,9 @@ read_universal_hash_and_vector_commit(const uint8_t *commitment,
 static inline int serialize_universal_hash(hm_buffer_t *commitment_out,
                                            const uint8_t keyH[16],
                                            const UniversalHash *H,
-                                           const uint8_t rBytes[L_BYTES]) {
+                                           const RVec *r) {
 
-  if (!keyH || !H || !commitment_out) {
+  if (!keyH || !H || !commitment_out || !r) {
     return -1;
   }
 
@@ -64,7 +51,8 @@ static inline int serialize_universal_hash(hm_buffer_t *commitment_out,
   // Pack into one contiguous buffer to write once
   memcpy(commitment_out->data, keyH, 16);
   memcpy(commitment_out->data + 16, H->b, sizeof(H->b));
-  SHA256(rBytes, L_BYTES, commitment_out->data + 16 + sizeof(H->b));
+  SHA256(rvec_const_bytes(r), L_BYTES,
+         commitment_out->data + 16 + sizeof(H->b));
   return 0;
 }
 

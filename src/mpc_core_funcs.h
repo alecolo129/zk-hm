@@ -11,15 +11,21 @@ static inline void generate_keys_and_rs(uint8_t keys[NUM_ROUNDS][3][16],
   RAND_bytes((uint8_t *)rs, NUM_ROUNDS * 3 * 4);
 }
 
-static inline void share_secrets(uint8_t rShares[3][L_BYTES],
+static inline void share_secrets(RVec rShares[3],
                                  uint32_t msgShares[MSG_WORDS][3],
-                                 const uint8_t rBytes[L_BYTES],
+                                 const RVec *r,
                                  const uint8_t msg[MSG_BYTES]) {
 
-  RAND_bytes((uint8_t *)rShares, 3 * L_BYTES * sizeof(uint8_t));
-  for (int j = 0; j < L_BYTES; j++) {
-    rShares[2][j] = rBytes[j] ^ rShares[0][j] ^ rShares[1][j];
+  RAND_bytes((uint8_t *)rShares[0].words, sizeof(rShares[0].words));
+  RAND_bytes((uint8_t *)rShares[1].words, sizeof(rShares[1].words));
+  rvec_normalize(&rShares[0]);
+  rvec_normalize(&rShares[1]);
+
+  for (int j = 0; j < L_WORDS; j++) {
+    rShares[2].words[j] =
+        r->words[j] ^ rShares[0].words[j] ^ rShares[1].words[j];
   }
+  rvec_normalize(&rShares[2]);
 
   RAND_bytes((uint8_t *)msgShares, 3 * MSG_WORDS * sizeof(uint32_t));
   uint32_t mask =

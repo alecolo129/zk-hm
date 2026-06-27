@@ -5,13 +5,12 @@
 #include "random_oracle.h"
 #include "shared.h"
 #include <stdio.h>
-
-inline size_t min(size_t a, size_t b) { return a <= b ? a : b; }
+#include <string.h>
 
 // prover
 void mpc_hm_prove(View *localViews[3], ZkBooCommit *as, uint8_t *randomness[3],
                   uint8_t rs[3][4], const UniversalHash *h,
-                  uint8_t rShares[3][L_BYTES],
+                  RVec rShares[3],
                   const uint32_t msgShares[MSG_WORDS][3]) {
 
   // prove y = SHA256(r)
@@ -22,20 +21,13 @@ void mpc_hm_prove(View *localViews[3], ZkBooCommit *as, uint8_t *randomness[3],
   output(localViews[1], as->yp[1]);
   output(localViews[2], as->yp[2]);
 
-  // prove H(r) = m
-  uint32_t rWords[L_WORDS][3] = {0};
-  for (int i = 0; i < L_WORDS; i++) {
-    memcpy(&rWords[i][0], &rShares[0][i * 4], sizeof(uint32_t));
-    memcpy(&rWords[i][1], &rShares[1][i * 4], sizeof(uint32_t));
-    memcpy(&rWords[i][2], &rShares[2][i * 4], sizeof(uint32_t));
-  }
   // copy msg share into respective local view
   for (int i = 0; i < MSG_WORDS; i++) {
     memcpy(&localViews[0]->msg[i * 4], &msgShares[i][0], sizeof(uint32_t));
     memcpy(&localViews[1]->msg[i * 4], &msgShares[i][1], sizeof(uint32_t));
     memcpy(&localViews[2]->msg[i * 4], &msgShares[i][2], sizeof(uint32_t));
   }
-  mpc_universal_hash_prove(h, msgShares, rWords, as->y2p);
+  mpc_inner_prod_prove(h, msgShares[0], rShares, as->y2p[0]);
 }
 
 // verifier
@@ -72,13 +64,9 @@ int mpc_hm_verify(UniversalHash *H, ZkBooCommit *a, ZkBooOpen *z, int e) {
     load_u32_le(&m[i][0], &z->ve->msg[i * 4]);
     load_u32_le(&m[i][1], &z->ve1->msg[i * 4]);
   };
-  uint32_t r[L_WORDS][2];
-  for (int j = 0; j < L_WORDS; j++) {
-    memcpy(&r[j][0], &z->ve->x[j * 4], sizeof(uint32_t));
-    memcpy(&r[j][1], &z->ve1->x[j * 4], sizeof(uint32_t));
-  }
+  RVec r[2] = {z->ve->x, z->ve1->x};
 
-  if (mpc_universal_hash_verify(H, m, r, a->y2p, e) != 0) {
+  if (mpc_inner_prod_verify(H, m[0], r, a->y2p[0], e) != 0) {
     return -1;
   }
 

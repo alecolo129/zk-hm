@@ -9,7 +9,6 @@
 #include "shared.h"
 #include "thread_state.h"
 #include "utils.h"
-#include <bits/time.h>
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <stdatomic.h>
@@ -30,11 +29,9 @@ static inline int test_randomness() {
 }
 
 static inline void pick_universal_hash(UniversalHash *h, const uint8_t keyA[16],
-                                       const uint8_t rBytes[L_BYTES],
+                                       const RVec *r,
                                        const uint8_t msg[MSG_BYTES]) {
-  uint32_t rWords[L_WORDS] = {0};
-  bytes_to_words(rWords, rBytes, L_BYTES);
-  generate_H(h->A, h->b, keyA, msg, rWords);
+  generate_H(h->A, h->b, keyA, msg, r);
 }
 
 static inline void hash_views(EVP_MD_CTX *ctx, uint8_t keys[3][16],
@@ -51,6 +48,8 @@ static inline void hash_views(EVP_MD_CTX *ctx, uint8_t keys[3][16],
 
 int hm_bit_commit(uint8_t bit, const char *proof_file_path,
                   hm_buffer_t *commitment_out, hm_buffer_t *opening_out) {
+  FILE *file = NULL;
+  EVP_MD_CTX *base_ctx = NULL;
 
   if (test_randomness() != 0) {
     return -1;
@@ -59,13 +58,17 @@ int hm_bit_commit(uint8_t bit, const char *proof_file_path,
   uint8_t msg[MSG_WORDS * 4] = {0}; // 32-bit alligned
   msg[0] ^= (bit & 1);
 
-  uint8_t rBytes[L_BYTES];
-  RAND_bytes(rBytes, L_BYTES); // take random r in {0,1}^L
+  RVec r;
+  if (RAND_bytes((uint8_t *)r.words, sizeof(r.words)) !=
+      1) { // take random r in {0,1}^L
+    goto cleanup;
+  }
+  rvec_normalize(&r);
 
   /*
    * Return the HM opening randomness r to the caller.
    */
-  if (hm_buffer_copy(opening_out, rBytes, sizeof(rBytes)) != 0) {
+  if (hm_buffer_copy(opening_out, rvec_const_bytes(&r), L_BYTES) != 0) {
     LOG_ERRF("Could not copy opening into output buffer");
     goto cleanup;
   }
@@ -78,18 +81,18 @@ int hm_bit_commit(uint8_t bit, const char *proof_file_path,
   // Generating keys
   generate_keys_and_rs(keys, keyH, rs);
   UniversalHash h;
-  pick_universal_hash(&h, keyH, rBytes, msg); // pick universal hash function
-  if (serialize_universal_hash(commitment_out, keyH, &h, rBytes) != 0) {
+  pick_universal_hash(&h, keyH, &r, msg); // pick universal hash function
+  if (serialize_universal_hash(commitment_out, keyH, &h, &r) != 0) {
     goto cleanup;
   }
 
-  FILE *file = fopen(proof_file_path, "wb");
+  file = fopen(proof_file_path, "wb");
   if (!file) {
     goto cleanup;
   }
 
   // Initialise shared context
-  EVP_MD_CTX *base_ctx = setupSHA256();
+  base_ctx = setupSHA256();
   EVP_DigestUpdate(base_ctx, h.A, sizeof(h.A));
   EVP_DigestUpdate(base_ctx, h.b, sizeof(h.b));
 
@@ -111,7 +114,7 @@ int hm_bit_commit(uint8_t bit, const char *proof_file_path,
       }
 
       // Sharing secrets
-      share_secrets(st.rShares, st.msgShares, rBytes, msg);
+      share_secrets(st.rShares, st.msgShares, &r, msg);
       // Generating randomness i.e., random tapes
       generate_randomness(keys[k], st.randomness);
 
@@ -276,13 +279,15 @@ int hm_bit_open(uint8_t bit, const uint8_t *commitment, size_t commitment_len,
   expand_A(h.A, h.keyA);
 
   // H(r) = Ar + b
+  RVec r;
+  rvec_from_bytes(&r, opening);
+
   uint32_t acc = 0;
-  const uint8_t *A = (uint8_t *)h.A;
-  for (int i = 0; i < L_BYTES; i++) {
-    acc ^= A[i] & opening[i];
+  for (int i = 0; i < L_WORDS; i++) {
+    acc ^= h.A[i] & r.words[i];
   }
   acc = __builtin_parity(acc);
-  acc ^= h.b[0];
+  acc ^= h.b[0] & 1;
 
   // commit verifies iff H(r) = m
   return (acc == bit) ? 0 : -1;

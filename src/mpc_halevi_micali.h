@@ -5,7 +5,7 @@
 void mpc_hm_prove(View *localViews[3], ZkBooCommit *as,
                               uint8_t *randomness[3], uint8_t rs[3][4],
                               const UniversalHash *h,
-                              uint8_t rShares[3][L_BYTES],
+                              RVec rShares[3],
                               const uint32_t msgShares[MSG_WORDS][3]);
 
 

@@ -8,30 +8,25 @@
 #include <string.h>
 
 static int mpc_sha256_prove_impl(unsigned char *results[3],
-                                 unsigned char *inputs[3],
+                                 const RVec shares[3],
                                  unsigned char *randomness[3], ViewsPtr views,
                                  int *countY);
 
-void mpc_sha256_prove(unsigned char shares[3][L_BYTES],
-                      unsigned char *randomness[3], View *views[3]) {
+void mpc_sha256_prove(const RVec shares[3], unsigned char *randomness[3],
+                      View *views[3]) {
 
   // TODO: refactor and remove ViewsPtr
   ViewsPtr views_ptr;
   for (int j = 0; j < 3; j++) {
-    views_ptr.x[j] = views[j]->x;
+    views_ptr.x[j] = &views[j]->x;
     views_ptr.y[j] = views[j]->y;
   }
-
-  unsigned char *inputs[3];
-  inputs[0] = shares[0];
-  inputs[1] = shares[1];
-  inputs[2] = shares[2];
 
   unsigned char buff[96];
   unsigned char *hashes[3] = {buff, &buff[32], &buff[64]};
 
   int countY = 0;
-  mpc_sha256_prove_impl(hashes, inputs, randomness, views_ptr, &countY);
+  mpc_sha256_prove_impl(hashes, shares, randomness, views_ptr, &countY);
 
   // Explicitly add y to view
   for (int i = 0; i < 8; i++) {
@@ -43,7 +38,7 @@ void mpc_sha256_prove(unsigned char shares[3][L_BYTES],
 }
 
 static int mpc_sha256_prove_impl(unsigned char *results[3],
-                                 unsigned char *inputs[3],
+                                 const RVec shares[3],
                                  unsigned char *randomness[3], ViewsPtr views,
                                  int *countY) {
 
@@ -54,17 +49,16 @@ static int mpc_sha256_prove_impl(unsigned char *results[3],
   // Pre-processing (padding)
   for (int i = 0; i < 3; i++) {
     padded[i] = calloc(paddedLen, 1);
-    memcpy(padded[i], inputs[i],
+    memcpy(padded[i], rvec_const_bytes(&shares[i]),
            L_BYTES); // copy original share[i] in respective chunk[i]
-    memcpy(views.x[i], inputs[i],
-           L_BYTES); // set each party's SHA-256 input as it's secret share x
+    *views.x[i] = shares[i]; // set each party's SHA-256 input share x
 
     // append 1
     padded[i][L_BYTES] = 0x80;
 
     // Last 8 chars used for storing length of input without padding, in
     // big-endian.
-    store_u64_be(&padded[i][paddedLen - 8], L_BITS);
+    store_u64_be(&padded[i][paddedLen - 8], SHA256_INPUT_BITS);
   }
 
   uint32_t H[8][3] = {{hA[0], hA[0], hA[0]}, {hA[1], hA[1], hA[1]},
