@@ -1,5 +1,3 @@
-find_package(GTest 1.14.0 REQUIRED)
-
 # Tests live here
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests)
 
@@ -13,13 +11,3 @@ target_link_libraries(hm_commit_test
         GTest::gtest_main
 )
 add_test(NAME hm_commit_test COMMAND hm_commit_test)
-
-include(GoogleTest)
-
-# add_executable(mpc_sha256_test
-#     test_mpc_sha256.c
-# )
-# target_link_libraries(mpc_sha256_test
-#     ${TEST_COMMON_LIBS}
-# )
-# add_test(NAME mpc_sha256_test COMMAND mpc_sha256_test)

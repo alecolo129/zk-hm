@@ -15,6 +15,7 @@ add_compile_options(-march=native)
 
 option(VERBOSE "Print debug messages" ON)
 option(ENABLE_SANITIZERS "Enable ASan/UBSan" OFF)
+option(HM_MPC_BUILD_TESTS "Build tests" OFF)
 
 if(ENABLE_SANITIZERS)
   add_library(sanitizers INTERFACE)
@@ -35,16 +36,6 @@ endif()
 # Dependencies
 find_package(OpenMP REQUIRED)
 find_package(OpenSSL REQUIRED)
-
-
-include(FetchContent)
-
-FetchContent_Declare(
-  googletest
-  GIT_REPOSITORY https://github.com/google/googletest.git
-  GIT_TAG v1.17.0
-)
-FetchContent_MakeAvailable(googletest)
 
 
 # Internal implementation target.
@@ -80,7 +71,6 @@ endif()
 target_link_libraries(hm_mpc_internal
   PUBLIC
     OpenMP::OpenMP_C
-    OpenMP::OpenMP_CXX
     OpenSSL::Crypto
 )
 
@@ -96,9 +86,19 @@ target_include_directories(hm_mpc
 target_link_libraries(hm_mpc
   PUBLIC
     OpenMP::OpenMP_C
-    OpenMP::OpenMP_CXX
     OpenSSL::Crypto
 )
 
-enable_testing()
-add_subdirectory(tests)
+if(HM_MPC_BUILD_TESTS)
+  include(FetchContent)
+
+  FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG v1.17.0
+  )
+  FetchContent_MakeAvailable(googletest)
+
+  enable_testing()
+  add_subdirectory(tests)
+endif()
