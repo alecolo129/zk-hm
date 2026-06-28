@@ -11,7 +11,7 @@ EVP_MD_CTX *setupSHA256() {
   return ctx;
 }
 
-void H(unsigned char k[16], View *v, unsigned char r[4],
+void H(const unsigned char k[16], const View *v, const unsigned char r[4],
        unsigned char hash[SHA256_DIGEST_LENGTH]) {
   EVP_MD_CTX *ctx = setupSHA256();
   EVP_DigestUpdate(ctx, k, 16);
@@ -22,7 +22,7 @@ void H(unsigned char k[16], View *v, unsigned char r[4],
   EVP_MD_CTX_free(ctx);
 }
 
-void HH(EVP_MD_CTX *ctx, unsigned char k[16], View *v, unsigned char r[4],
+void HH(EVP_MD_CTX *ctx, const unsigned char k[16], const View *v, const unsigned char r[4],
         unsigned char hash[SHA256_DIGEST_LENGTH]) {
   EVP_DigestInit_ex(ctx, EVP_sha256(), NULL);
   EVP_DigestUpdate(ctx, k, 16);
@@ -32,7 +32,7 @@ void HH(EVP_MD_CTX *ctx, unsigned char k[16], View *v, unsigned char r[4],
   EVP_DigestFinal_ex(ctx, hash, &outlen);
 }
 
-void H3(EVP_MD_CTX *ctx, uint32_t y[8], ZkBooCommit *as, int s, int *es) {
+void H3(EVP_MD_CTX *ctx, const uint32_t y[8], const ZkBooCommit *as, int s, int *es) {
   unsigned char hash[SHA256_DIGEST_LENGTH];
   EVP_DigestUpdate(ctx, y, 32);
   EVP_DigestUpdate(ctx, as, sizeof(ZkBooCommit) * s);

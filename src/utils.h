@@ -8,8 +8,10 @@
 #include <unistd.h>
 
 static inline int read_universal_hash(const uint8_t *commitment,
-                                      size_t commitment_len, UniversalHash *H) {
-  if (commitment_len != 16 + sizeof(H->b) + SHA256_DIGEST_LENGTH) {
+                                      size_t commitment_len, UniversalHash *H)
+{
+  if (commitment_len != 16 + sizeof(H->b) + SHA256_DIGEST_LENGTH)
+  {
     LOG_ERRF("Commitment length invalid");
     return -1;
   }
@@ -18,11 +20,12 @@ static inline int read_universal_hash(const uint8_t *commitment,
   return 0;
 }
 
-static inline int
-read_universal_hash_and_vector_commit(const uint8_t *commitment,
-                                      size_t commitment_len, UniversalHash *H,
-                                      uint8_t y[SHA256_DIGEST_LENGTH]) {
-  if (commitment_len != 16 + sizeof(H->b) + SHA256_DIGEST_LENGTH) {
+static inline int read_hm_commitment(const uint8_t *commitment,
+                                     size_t commitment_len, UniversalHash *H,
+                                     uint8_t y[SHA256_DIGEST_LENGTH])
+{
+  if (commitment_len != 16 + sizeof(H->b) + SHA256_DIGEST_LENGTH)
+  {
     LOG_ERRF("Commitment length invalid");
     return -1;
   }
@@ -32,18 +35,21 @@ read_universal_hash_and_vector_commit(const uint8_t *commitment,
   return 0;
 }
 
-static inline int serialize_universal_hash(hm_buffer_t *commitment_out,
-                                           const uint8_t keyH[16],
-                                           const UniversalHash *H,
-                                           const RVec *r) {
+static inline int write_hm_commitment(hm_buffer_t *commitment_out,
+                                          const uint8_t keyH[16],
+                                          const UniversalHash *H,
+                                          const RVec *r)
+{
 
-  if (!keyH || !H || !commitment_out || !r) {
+  if (!keyH || !H || !commitment_out || !r)
+  {
     return -1;
   }
 
   commitment_out->len = 16 + sizeof(H->b) + SHA256_DIGEST_LENGTH;
   commitment_out->data = malloc(commitment_out->len);
-  if (!commitment_out->data) {
+  if (!commitment_out->data)
+  {
     LOG_ERRF("malloc failure");
     return -1;
   }
@@ -59,10 +65,12 @@ static inline int serialize_universal_hash(hm_buffer_t *commitment_out,
 static inline int serialize_zk_proof_at(FILE *f, unsigned char *buf,
                                         size_t buffSize, int k,
                                         const ZkBooCommit *a_ptr,
-                                        const ZkBooOpen *z_ptr) {
+                                        const ZkBooOpen *z_ptr)
+{
 
   size_t proofSize = sizeof(ZkBooCommit) + sizeof(ZkBooOpenDisk);
-  if (buffSize < proofSize) {
+  if (buffSize < proofSize)
+  {
     LOG_ERRF("Allocated buffer is %luB, required is %luB\n", buffSize,
              proofSize);
     return -1;
@@ -96,9 +104,11 @@ static inline int serialize_zk_proof_at(FILE *f, unsigned char *buf,
 
 static inline int read_zk_proof_at(FILE *f, unsigned char *buf, size_t bufSize,
                                    int k, ZkBooCommit *a_ptr,
-                                   ZkBooOpen *z_ptr) {
+                                   ZkBooOpen *z_ptr)
+{
   size_t proofSize = sizeof(ZkBooCommit) + sizeof(ZkBooOpenDisk);
-  if (bufSize < proofSize) {
+  if (bufSize < proofSize)
+  {
     return -1;
   }
 
@@ -106,7 +116,8 @@ static inline int read_zk_proof_at(FILE *f, unsigned char *buf, size_t bufSize,
   int fd = fileno(f);
   off_t off = (off_t)k * proofSize;
   ssize_t nRead = pread(fd, buf, proofSize, off);
-  if (nRead != proofSize) {
+  if (nRead != proofSize)
+  {
     return -1;
   }
 
@@ -125,7 +136,8 @@ static inline int read_zk_proof_at(FILE *f, unsigned char *buf, size_t bufSize,
   bufIdx += sizeof(z_ptr->re1);
 
   // allocate views memory
-  if (!z_ptr->ve || !z_ptr->ve1) {
+  if (!z_ptr->ve || !z_ptr->ve1)
+  {
     return -1;
   }
 

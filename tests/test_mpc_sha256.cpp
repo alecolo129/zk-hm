@@ -20,13 +20,6 @@ static void make_xor_shares(RVec shares[3], const RVec *msg) {
   rvec_normalize(&shares[2]);
 }
 
-inline void store_u32_be(const uint32_t src, unsigned char *dst) {
-  dst[0] = src >> 24;
-  dst[1] = src >> 16;
-  dst[2] = src >> 8;
-  dst[3] = src;
-}
-
 // XOR combine three 32-byte digests
 static void xor3_digest(uint32_t out[8], uint32_t *d0, uint32_t *d1,
                         uint32_t *d2) {

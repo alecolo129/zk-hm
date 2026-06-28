@@ -82,7 +82,7 @@ int hm_bit_commit(uint8_t bit, const char *proof_file_path,
   generate_keys_and_rs(keys, keyH, rs);
   UniversalHash h;
   pick_universal_hash(&h, keyH, &r, msg); // pick universal hash function
-  if (serialize_universal_hash(commitment_out, keyH, &h, &r) != 0) {
+  if (write_hm_commitment(commitment_out, keyH, &h, &r) != 0) {
     goto cleanup;
   }
 
@@ -261,7 +261,7 @@ int hm_bit_open(uint8_t bit, const uint8_t *commitment, size_t commitment_len,
 
   UniversalHash h;
   uint8_t y[SHA256_DIGEST_LENGTH];
-  if (read_universal_hash_and_vector_commit(commitment, commitment_len, &h,
+  if (read_hm_commitment(commitment, commitment_len, &h,
                                             y) != 0) {
     LOG_ERRF("Cannot read commitment");
     return -1;

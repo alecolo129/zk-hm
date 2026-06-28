@@ -174,6 +174,14 @@ static inline void handleErrors(void) {
   abort();
 }
 
+/* Helper: write 32-bit big-endian */
+static inline void store_u32_be(const uint32_t src, unsigned char *dst) {
+  dst[0] = src >> 24;
+  dst[1] = src >> 16;
+  dst[2] = src >> 8;
+  dst[3] = src;
+}
+
 /* Helper: write 64-bit big-endian */
 static inline void store_u64_be(unsigned char *dst, uint64_t x) {
   dst[0] = (unsigned char)(x >> 56);
@@ -186,13 +194,13 @@ static inline void store_u64_be(unsigned char *dst, uint64_t x) {
   dst[7] = (unsigned char)(x);
 }
 
-/* Helper: write 32-bit big-endian */
+/* Helper: read 32-bit big-endian */
 static inline void load_u32_be(uint32_t *dst, const unsigned char *src) {
   *dst = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
          ((uint32_t)src[2] << 8) | (uint32_t)src[3];
 }
 
-/* Helper: write 32-bit big-endian */
+/* Helper: read 32-bit little-endian */
 static inline void load_u32_le(uint32_t *dst, const unsigned char *src) {
   *dst = ((uint32_t)src[3] << 24) | ((uint32_t)src[2] << 16) |
          ((uint32_t)src[1] << 8) | (uint32_t)src[0];
