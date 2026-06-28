@@ -52,14 +52,22 @@ static inline void open(ZkBooOpen *z, int e, const unsigned char keys[3][16],
   memcpy(z->re1, rs[(e + 1) % 3], 4);
 }
 
-static inline void output(View *v, uint32_t *result) {
-  memcpy(result, &v->y[ySize - 8], 32);
+static inline void load_digest_words(const uint8_t digest[SHA256_DIGEST_LENGTH],
+                                     uint32_t words[SHA256_DIGEST_WORDS]) {
+  for (int i = 0; i < SHA256_DIGEST_WORDS; i++) {
+    load_u32_be(&words[i], &digest[i * sizeof(uint32_t)]);
+  }
 }
 
-static inline void reconstruct(const uint32_t *y0, const uint32_t *y1, const uint32_t *y2,
-                               uint8_t *result) {
-                                
-  for (int i = 0; i < 8; i++) {
-    store_u32_be(y0[i] ^ y1[i] ^ y2[i], &result[i * 4]);
+static inline void reconstruct_sha256_output_shares(
+    const ZkBooCommit *a, const uint8_t digest[SHA256_DIGEST_LENGTH],
+    uint32_t output_shares[3][SHA256_DIGEST_WORDS]) {
+  uint32_t digest_words[SHA256_DIGEST_WORDS];
+  load_digest_words(digest, digest_words);
+
+  for (int i = 0; i < SHA256_DIGEST_WORDS; i++) {
+    output_shares[0][i] = a->yp[0][i];
+    output_shares[1][i] = a->yp[1][i];
+    output_shares[2][i] = digest_words[i] ^ a->yp[0][i] ^ a->yp[1][i];
   }
 }

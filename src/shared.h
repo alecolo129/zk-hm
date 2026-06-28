@@ -61,10 +61,12 @@
 /* Required number of random bytes to proof knowledge of the committed message.
  * Note: for each SHA256 block we need 2912 bytes of randomness */
 #define RAND_BYTES (2912 * NUM_SHA256_BLOCKS)
-/* Size of the circuit output in 32-bit words.
- * We need 'RAND_BYTES/4' words to store all the AND/ADD openings + 8 words to
- * store the SHA256 output. */
-#define ySize (RAND_BYTES / 4 + 8)
+#define SHA256_DIGEST_WORDS (SHA256_DIGEST_LENGTH / sizeof(uint32_t))
+
+/* Size of the MPC transcript in 32-bit words.
+ * We store the AND/ADD openings here. SHA-256 output shares are carried
+ * separately in the ZkBooCommit transcript. */
+#define ySize (RAND_BYTES / 4)
 
 #define A_ROWS ((MSG_BITS - 1 + 31) / 32)
 #define A_WORDS (A_ROWS + L_WORDS + 1) // Additional padding word
@@ -122,8 +124,7 @@ static inline void rvec_from_bytes(RVec *dst, const uint8_t src[L_BYTES]) {
 typedef struct {
   RVec x; // secret input share = SHA256 input
   uint8_t msg[MSG_WORDS * 4]; // share of the committed message
-  uint32_t y[ySize]; // output share (i.e., all the ADD/AND commits + the SHA256
-                     // output)
+  uint32_t y[ySize]; // MPC ADD/AND openings
 } View;
 
 // TODO: remove
@@ -134,7 +135,7 @@ typedef struct {
 
 // commitment
 typedef struct {
-  uint32_t yp[3][8]; // SHA256 output of each party (output shares of MD(r))
+  uint32_t yp[2][SHA256_DIGEST_WORDS]; // SHA256 output shares for parties 0,1
   uint32_t y2p[MSG_WORDS][3]; // Commitment to zero (output shares of h(r) ^ m
                               // where h is UHF)
   unsigned char h[3][32]; // SHA256 of each party's key and view with commitment

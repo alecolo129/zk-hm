@@ -24,9 +24,11 @@ static const uint32_t k[64] = {
     0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
 
 void mpc_sha256_prove(const RVec shares[3], unsigned char *randomness[3],
-                      View *views[3]);
+                      View *views[3],
+                      uint32_t output_shares[3][SHA256_DIGEST_WORDS]);
 
-int mpc_sha256_verify(ZkBooCommit *commit, int e, ZkBooOpen *open);
+int mpc_sha256_verify(const uint32_t output_shares[3][SHA256_DIGEST_WORDS],
+                      int e, ZkBooOpen *open);
 
 #ifdef __cplusplus
 }

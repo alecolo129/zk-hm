@@ -7,12 +7,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int mpc_sha256_prove_impl(const RVec shares[3],
-                                 unsigned char *randomness[3], ViewsPtr views,
-                                 int *countY);
+static int mpc_sha256_prove_impl(
+    const RVec shares[3], unsigned char *randomness[3], ViewsPtr views,
+    int *countY, uint32_t output_shares[3][SHA256_DIGEST_WORDS]);
 
 void mpc_sha256_prove(const RVec shares[3], unsigned char *randomness[3],
-                      View *views[3]) {
+                      View *views[3],
+                      uint32_t output_shares[3][SHA256_DIGEST_WORDS]) {
 
   // TODO: refactor and remove ViewsPtr
   ViewsPtr views_ptr;
@@ -22,12 +23,12 @@ void mpc_sha256_prove(const RVec shares[3], unsigned char *randomness[3],
   }
 
   int countY = 0;
-  mpc_sha256_prove_impl(shares, randomness, views_ptr, &countY);
+  mpc_sha256_prove_impl(shares, randomness, views_ptr, &countY, output_shares);
 }
 
-static int mpc_sha256_prove_impl(const RVec shares[3],
-                                 unsigned char *randomness[3], ViewsPtr views,
-                                 int *countY) {
+static int mpc_sha256_prove_impl(
+    const RVec shares[3], unsigned char *randomness[3], ViewsPtr views,
+    int *countY, uint32_t output_shares[3][SHA256_DIGEST_WORDS]) {
 
   int randCount = 0;
 
@@ -164,12 +165,10 @@ static int mpc_sha256_prove_impl(const RVec shares[3],
     mpc_ADD(H[7], h, H[7], randomness, &randCount, views.y, countY);
   }
 
-  // copy each party's output into respective view 
-  for (int i = 0; i < 8; i++) {
-    views.y[0][*countY] = H[i][0];
-    views.y[1][*countY] = H[i][1];
-    views.y[2][*countY] = H[i][2];
-    *countY += 1;
+  for (int i = 0; i < SHA256_DIGEST_WORDS; i++) {
+    output_shares[0][i] = H[i][0];
+    output_shares[1][i] = H[i][1];
+    output_shares[2][i] = H[i][2];
   }
 
   // Free padded shares

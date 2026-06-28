@@ -10,28 +10,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-int mpc_sha256_verify(ZkBooCommit *a, int e, ZkBooOpen *z) {
+int mpc_sha256_verify(const uint32_t output_shares[3][SHA256_DIGEST_WORDS],
+                      int e, ZkBooOpen *z) {
   int ret = -1;
   unsigned char *randomness_block = NULL;
   unsigned char *randomness[2] = {NULL, NULL};
   uint8_t *padded[2] = {NULL, NULL};
 
-  if (!a || !z || !z->ve || !z->ve1 || e < 0 || e >= 3) {
+  if (!output_shares || !z || !z->ve || !z->ve1 || e < 0 || e >= 3) {
     LOG_ERRF("Invalid mpc_sha256_verify input");
     return -1;
-  }
-
-  uint32_t result[8];
-  output(z->ve, result);
-  if (memcmp(a->yp[e], result, sizeof(result)) != 0) {
-    LOG_ERRF("Committed outputs inconsistent with opening");
-    goto cleanup;
-  }
-
-  output(z->ve1, result);
-  if (memcmp(a->yp[(e + 1) % 3], result, sizeof(result)) != 0) {
-    LOG_ERRF("Committed outputs inconsistent with opening");
-    goto cleanup;
   }
 
   randomness_block = malloc(2u * RAND_BYTES);
@@ -259,8 +247,9 @@ int mpc_sha256_verify(ZkBooCommit *a, int e, ZkBooOpen *z) {
     }
   }
 
-  for (int i = 0; i < 8; i++) {
-    if ((H[i][0] != a->yp[e][i]) || (H[i][1] != a->yp[(e + 1) % 3][i])) {
+  for (int i = 0; i < SHA256_DIGEST_WORDS; i++) {
+    if ((H[i][0] != output_shares[e][i]) ||
+        (H[i][1] != output_shares[(e + 1) % 3][i])) {
       LOG_ERRF("Reconstructed output shares don't match commitment");
       goto cleanup;
     }

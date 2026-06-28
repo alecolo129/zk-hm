@@ -14,12 +14,12 @@ void mpc_hm_prove(View *localViews[3], ZkBooCommit *as, uint8_t *randomness[3],
                   const uint32_t msgShares[MSG_WORDS][3]) {
 
   // prove y = SHA256(r)
-  mpc_sha256_prove(rShares, randomness, localViews);
+  uint32_t output_shares[3][SHA256_DIGEST_WORDS];
+  mpc_sha256_prove(rShares, randomness, localViews, output_shares);
 
-  // copy last part of the view.y (i.e., SHA256 output) into a.yp
-  output(localViews[0], as->yp[0]);
-  output(localViews[1], as->yp[1]);
-  output(localViews[2], as->yp[2]);
+  // Store two SHA-256 output shares; verifier derives the third from MD(r).
+  memcpy(as->yp[0], output_shares[0], sizeof(as->yp[0]));
+  memcpy(as->yp[1], output_shares[1], sizeof(as->yp[1]));
 
   // copy msg share into respective local view
   for (int i = 0; i < MSG_WORDS; i++) {
@@ -32,7 +32,7 @@ void mpc_hm_prove(View *localViews[3], ZkBooCommit *as, uint8_t *randomness[3],
 
 // verifier
 
-static int verify_commit(const ZkBooCommit *a, const ZkBooOpen *z, const uint8_t y[SHA256_DIGEST_LENGTH], int e) {
+static int verify_commit(const ZkBooCommit *a, const ZkBooOpen *z, int e) {
 
   unsigned char hash[SHA256_DIGEST_LENGTH];
   H(z->ke, z->ve, z->re, hash);
@@ -47,23 +47,18 @@ static int verify_commit(const ZkBooCommit *a, const ZkBooOpen *z, const uint8_t
     return -1;
   }
 
-  uint8_t y_rec[SHA256_DIGEST_LENGTH];
-  reconstruct(a->yp[0], a->yp[1], a->yp[2], y_rec);
-  if(memcmp(y, y_rec, SHA256_DIGEST_LENGTH) != 0) {
-    LOG_ERRF("MPC SHA256 output shares don't match Halevi-Micali commitment");
-    return -1;
-  }
-
   return 0;
 }
 
 int mpc_hm_verify(UniversalHash *H, ZkBooCommit *a, ZkBooOpen *z, const uint8_t y[SHA256_DIGEST_LENGTH], int e) {
+  uint32_t output_shares[3][SHA256_DIGEST_WORDS];
+  reconstruct_sha256_output_shares(a, y, output_shares);
 
-  if (verify_commit(a, z, y, e) != 0) {
+  if (verify_commit(a, z, e) != 0) {
     return -1;
   }
 
-  if (mpc_sha256_verify(a, e, z) != 0) {
+  if (mpc_sha256_verify(output_shares, e, z) != 0) {
     return -1;
   }
 
