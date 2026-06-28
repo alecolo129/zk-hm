@@ -80,12 +80,15 @@ int hm_bit_commit(uint8_t bit, const char *proof_file_path,
 
   // Generating keys
   generate_keys_and_rs(keys, keyH, rs);
+  
+  // Generate halevi-micali commitment
   UniversalHash h;
   pick_universal_hash(&h, keyH, &r, msg); // pick universal hash function
   if (write_hm_commitment(commitment_out, keyH, &h, &r) != 0) {
     goto cleanup;
   }
 
+  // Open proof file
   file = fopen(proof_file_path, "wb");
   if (!file) {
     goto cleanup;
@@ -129,7 +132,7 @@ int hm_bit_commit(uint8_t bit, const char *proof_file_path,
       // opened).
       int e;
       EVP_MD_CTX_copy_ex(st.ctx_chal, base_ctx);
-      generate_challenge(&a, &e, st.ctx_chal);
+      generate_challenge(st.ctx_chal, &e, &a, y_const_bytes(commitment_out));
 
       // Generate opening
       ZkBooOpen z;
@@ -177,15 +180,16 @@ int hm_bit_verify(const uint8_t *commitment, size_t commitment_len,
     return -1;
   }
 
-  UniversalHash h;
   FILE *file = fopen(proof_file_path, "rb");
   if (!file) {
     LOG_ERRF("Unable to open proof file!");
     goto fail;
   }
 
-  if (read_universal_hash(commitment, commitment_len, &h) != 0) {
-    LOG_ERRF("Unable to parse proof!");
+  UniversalHash h;
+  uint8_t y[SHA256_DIGEST_LENGTH];
+  if (read_hm_commitment(commitment, commitment_len, &h, y) != 0) {
+    LOG_ERRF("Cannot read commitment");
     goto fail;
   }
 
@@ -221,12 +225,10 @@ int hm_bit_verify(const uint8_t *commitment, size_t commitment_len,
         atomic_store(&error, 1);
       }
 
-      reconstruct(st.a.yp[0], st.a.yp[1], st.a.yp[2], st.y);
-
       int e;
       EVP_MD_CTX_copy_ex(st.ctx_chal, base_ctx);
-      H3(st.ctx_chal, st.y, &st.a, 1, &e);
-      if (mpc_hm_verify(&h, &st.a, &st.z, e) != 0) {
+      H3(st.ctx_chal, y, &st.a, 1, &e);
+      if (mpc_hm_verify(&h, &st.a, &st.z, y, e) != 0) {
         LOG_ERRF("Repetition #%d failed to verify!", k);
         atomic_store(&error, 1);
       }

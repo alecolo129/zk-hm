@@ -27,7 +27,6 @@ typedef struct VerifierThreadState {
   // Shares reused each repetion of the zk-proof
   ZkBooCommit a;
   ZkBooOpen z;
-  uint32_t y[8];
 
   // Hash contexts
   EVP_MD_CTX *ctx_chal; // used with EVP_MD_CTX_copy_ex + H3

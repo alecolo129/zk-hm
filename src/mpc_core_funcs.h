@@ -38,11 +38,7 @@ static inline void share_secrets(RVec rShares[3],
   }
 }
 
-static inline void generate_challenge(ZkBooCommit *a, int *e, EVP_MD_CTX *ctx) {
-  uint32_t finalHash[8];
-  for (int j = 0; j < 8; j++) {
-    finalHash[j] = a->yp[0][j] ^ a->yp[1][j] ^ a->yp[2][j];
-  }
+static inline void generate_challenge(EVP_MD_CTX *ctx, int *e, const ZkBooCommit *a, const uint8_t* finalHash) {
   H3(ctx, finalHash, a, 1, e);
 }
 
@@ -60,9 +56,10 @@ static inline void output(View *v, uint32_t *result) {
   memcpy(result, &v->y[ySize - 8], 32);
 }
 
-static inline void reconstruct(uint32_t *y0, uint32_t *y1, uint32_t *y2,
-                               uint32_t *result) {
+static inline void reconstruct(const uint32_t *y0, const uint32_t *y1, const uint32_t *y2,
+                               uint8_t *result) {
+                                
   for (int i = 0; i < 8; i++) {
-    result[i] = y0[i] ^ y1[i] ^ y2[i];
+    store_u32_be(y0[i] ^ y1[i] ^ y2[i], &result[i * 4]);
   }
 }

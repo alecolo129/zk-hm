@@ -32,7 +32,7 @@ void HH(EVP_MD_CTX *ctx, const unsigned char k[16], const View *v, const unsigne
   EVP_DigestFinal_ex(ctx, hash, &outlen);
 }
 
-void H3(EVP_MD_CTX *ctx, const uint32_t y[8], const ZkBooCommit *as, int s, int *es) {
+void H3(EVP_MD_CTX *ctx, const uint8_t y[SHA256_DIGEST_LENGTH], const ZkBooCommit *as, int s, int *es) {
   unsigned char hash[SHA256_DIGEST_LENGTH];
   EVP_DigestUpdate(ctx, y, 32);
   EVP_DigestUpdate(ctx, as, sizeof(ZkBooCommit) * s);

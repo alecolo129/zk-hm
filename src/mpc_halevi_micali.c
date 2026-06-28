@@ -32,7 +32,7 @@ void mpc_hm_prove(View *localViews[3], ZkBooCommit *as, uint8_t *randomness[3],
 
 // verifier
 
-static int verify_commit(ZkBooCommit *a, int e, ZkBooOpen *z) {
+static int verify_commit(const ZkBooCommit *a, const ZkBooOpen *z, const uint8_t y[SHA256_DIGEST_LENGTH], int e) {
 
   unsigned char hash[SHA256_DIGEST_LENGTH];
   H(z->ke, z->ve, z->re, hash);
@@ -47,14 +47,22 @@ static int verify_commit(ZkBooCommit *a, int e, ZkBooOpen *z) {
     return -1;
   }
 
+  uint8_t y_rec[SHA256_DIGEST_LENGTH];
+  reconstruct(a->yp[0], a->yp[1], a->yp[2], y_rec);
+  if(memcmp(y, y_rec, SHA256_DIGEST_LENGTH) != 0) {
+    LOG_ERRF("MPC SHA256 output shares don't match Halevi-Micali commitment");
+    return -1;
+  }
+
   return 0;
 }
 
-int mpc_hm_verify(UniversalHash *H, ZkBooCommit *a, ZkBooOpen *z, int e) {
+int mpc_hm_verify(UniversalHash *H, ZkBooCommit *a, ZkBooOpen *z, const uint8_t y[SHA256_DIGEST_LENGTH], int e) {
 
-  if (verify_commit(a, e, z) != 0) {
+  if (verify_commit(a, z, y, e) != 0) {
     return -1;
   }
+
   if (mpc_sha256_verify(a, e, z) != 0) {
     return -1;
   }

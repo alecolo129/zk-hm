@@ -7,19 +7,6 @@
 #include <string.h>
 #include <unistd.h>
 
-static inline int read_universal_hash(const uint8_t *commitment,
-                                      size_t commitment_len, UniversalHash *H)
-{
-  if (commitment_len != 16 + sizeof(H->b) + SHA256_DIGEST_LENGTH)
-  {
-    LOG_ERRF("Commitment length invalid");
-    return -1;
-  }
-  memcpy(H->keyA, commitment, 16);
-  memcpy(H->b, commitment + 16, sizeof(H->b));
-  return 0;
-}
-
 static inline int read_hm_commitment(const uint8_t *commitment,
                                      size_t commitment_len, UniversalHash *H,
                                      uint8_t y[SHA256_DIGEST_LENGTH])
@@ -60,6 +47,10 @@ static inline int write_hm_commitment(hm_buffer_t *commitment_out,
   SHA256(rvec_const_bytes(r), L_BYTES,
          commitment_out->data + 16 + sizeof(H->b));
   return 0;
+}
+
+static inline const uint8_t* y_const_bytes(const hm_buffer_t* commitment){
+  return commitment->data + 16 + MSG_BYTES;
 }
 
 static inline int serialize_zk_proof_at(FILE *f, unsigned char *buf,

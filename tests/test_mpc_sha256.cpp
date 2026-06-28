@@ -62,17 +62,17 @@ TEST(MPCSha256Test, test) {
 
   // generate zk-prove
   mpc_sha256_prove(shares, randomness, views);
-  uint32_t mpc_digets[8];
-  xor3_digest(mpc_digets, &views[0]->y[ySize - 8], &views[1]->y[ySize - 8],
+  uint32_t mpc_digest[8];
+  xor3_digest(mpc_digest, &views[0]->y[ySize - 8], &views[1]->y[ySize - 8],
               &views[2]->y[ySize - 8]);
   unsigned char actual[32];
   for (int i = 0; i < 8; ++i) {
-    store_u32_be(mpc_digets[i], &actual[i * 4]);
+    store_u32_be(mpc_digest[i], &actual[i * 4]);
   }
 
   uint8_t expected_digest[32];
   SHA256(rvec_const_bytes(&msg_as), L_BYTES, expected_digest);
 
   EXPECT_EQ(memcmp(expected_digest, actual, 32), 0)
-      << expected_digest[0] << " - " << actual[0];
+      << (int)expected_digest[0] << " - " << (int)actual[0];
 }

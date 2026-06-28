@@ -9,4 +9,4 @@ void mpc_hm_prove(View *localViews[3], ZkBooCommit *as,
                               const uint32_t msgShares[MSG_WORDS][3]);
 
 
-int mpc_hm_verify(UniversalHash *H, ZkBooCommit *a, ZkBooOpen *z, int e);
+int mpc_hm_verify(UniversalHash *H, ZkBooCommit *a, ZkBooOpen *z, const uint8_t y[SHA256_DIGEST_LENGTH], int e);
