@@ -7,8 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int mpc_sha256_prove_impl(unsigned char *results[3],
-                                 const RVec shares[3],
+static int mpc_sha256_prove_impl(const RVec shares[3],
                                  unsigned char *randomness[3], ViewsPtr views,
                                  int *countY);
 
@@ -22,23 +21,11 @@ void mpc_sha256_prove(const RVec shares[3], unsigned char *randomness[3],
     views_ptr.y[j] = views[j]->y;
   }
 
-  unsigned char buff[96];
-  unsigned char *hashes[3] = {buff, &buff[32], &buff[64]};
-
   int countY = 0;
-  mpc_sha256_prove_impl(hashes, shares, randomness, views_ptr, &countY);
-
-  // Explicitly add y to view
-  for (int i = 0; i < 8; i++) {
-    load_u32_be(&views_ptr.y[0][countY], &hashes[0][i * 4]);
-    load_u32_be(&views_ptr.y[1][countY], &hashes[1][i * 4]);
-    load_u32_be(&views_ptr.y[2][countY], &hashes[2][i * 4]);
-    countY += 1;
-  }
+  mpc_sha256_prove_impl(shares, randomness, views_ptr, &countY);
 }
 
-static int mpc_sha256_prove_impl(unsigned char *results[3],
-                                 const RVec shares[3],
+static int mpc_sha256_prove_impl(const RVec shares[3],
                                  unsigned char *randomness[3], ViewsPtr views,
                                  int *countY) {
 
@@ -177,32 +164,17 @@ static int mpc_sha256_prove_impl(unsigned char *results[3],
     mpc_ADD(H[7], h, H[7], randomness, &randCount, views.y, countY);
   }
 
+  // copy each party's output into respective view 
+  for (int i = 0; i < 8; i++) {
+    views.y[0][*countY] = H[i][0];
+    views.y[1][*countY] = H[i][1];
+    views.y[2][*countY] = H[i][2];
+    *countY += 1;
+  }
+
   // Free padded shares
   for (int i = 0; i < 3; i++) {
     free(padded[i]);
-  }
-
-  uint32_t t0[3];
-
-  // produce the final hash value (big endian)
-  // append each hHa[i] converting int into char
-  for (int i = 0; i < 8; i++) {
-    mpc_RIGHTSHIFT(H[i], 24, t0);
-    results[0][i * 4] = t0[0];
-    results[1][i * 4] = t0[1];
-    results[2][i * 4] = t0[2];
-    mpc_RIGHTSHIFT(H[i], 16, t0);
-    results[0][i * 4 + 1] = t0[0];
-    results[1][i * 4 + 1] = t0[1];
-    results[2][i * 4 + 1] = t0[2];
-    mpc_RIGHTSHIFT(H[i], 8, t0);
-    results[0][i * 4 + 2] = t0[0];
-    results[1][i * 4 + 2] = t0[1];
-    results[2][i * 4 + 2] = t0[2];
-
-    results[0][i * 4 + 3] = H[i][0];
-    results[1][i * 4 + 3] = H[i][1];
-    results[2][i * 4 + 3] = H[i][2];
   }
 
   return 0;
