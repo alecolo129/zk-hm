@@ -1,11 +1,8 @@
 # zk-HM (ZKBoo + Halevi–Micali Commitments)
 
-This repository implements a **ZKBoo-style proof of SHA-256 preimage knowledge**, adapted to **statistically hiding Halevi–Micali (HM) commitments**.
+This repository implements a **ZKBoo-style proof of SHA-256 preimage knowledge**, adapted to **statistically hiding Halevi–Micali (HM) commitments** (using SHA-256 as the collision-resistant function).
 
-It extends the MPC-in-the-head SHA-256 proof by:
-- supporting **arbitrary-length inputs** (multiple SHA-256 rounds),
-- integrating a **universal hashing step**,
-- enabling a proof of knowledge of the preimage of a **statistically-hiding HM commitment** (using SHA-256 as the collision-resistant function).
+It extends the MPC-in-the-head SHA-256 proof by supporting **arbitrary-length inputs** (multiple SHA-256 rounds), and integrating a **universal hashing step**.
 
 
 ## Build
@@ -13,7 +10,7 @@ It extends the MPC-in-the-head SHA-256 proof by:
 ### Requirements
 
 - C compiler (C11)
-- CMake ≥ 3.16
+- CMake
 - OpenSSL (tested with 3.0)
 - OpenMP
 
@@ -44,7 +41,8 @@ A typical zero-knowledge bit-commitment flow is:
 1. call `hm_bit_commit()` to create a commitment, opening, and proof file;
 2. call `hm_bit_verify()` to verify the proof file against the commitment;
 3. release library-owned buffers with `hm_buffer_free()`.
-In the non zero-knowledge setting (i.e., the prover discloses the opening), the verifier can just call `hm_bit_open()`, which directly verifies the halevi-micali commitment against the opening and the input bit.
+
+In the non zero-knowledge setting (where the opening is also known), the verifier can just call `hm_bit_open()`, which directly verifies the halevi-micali commitment against the opening and the input bit.
 
 
 C and C++ examples are available in `examples/` and are disabled by default:
