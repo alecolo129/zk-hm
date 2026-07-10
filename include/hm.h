@@ -23,8 +23,39 @@ extern "C" {
  */
 void hm_buffer_free(hm_buffer_t *buf);
 
+/**
+ * Commit to an arbitrary-length bit string.
+ *
+ * @param[in] message             The message bytes. Bits are read LSB-first
+ * @param[in] message_bit_len     The number of message bits to commit
+ * @param[out] commitment_out     The Halevi-Micali commitment
+ * @param[out] opening_out        The Halevi-Micali opening
+ *
+ * @return Returns 0 if the commitment was computed successfully, nonzero value
+ * indicates failure.
+ */
+int hm_commit(const uint8_t *message, size_t message_bit_len,
+              hm_buffer_t *commitment_out, hm_buffer_t *opening_out);
+
+/**
+ * Verifies the commitment against the input bit string and opening.
+ *
+ * @param[in] message             The message bytes. Bits are read LSB-first
+ * @param[in] message_bit_len     The number of message bits to open
+ * @param[in] commitment          The Halevi-Micali commitment
+ * @param[in] commitment_len      The length of Halevi-Micali commitment, in bytes
+ * @param[in] opening             The Halevi-Micali opening
+ * @param[in] opening_len         The length of Halevi-Micali opening, in bytes
+ *
+ * @return Returns 0 if the message was successfully verified, or a non-zero
+ * value indicating an error or failed verification.
+ */
+int hm_verify(const uint8_t *message, size_t message_bit_len,
+            const uint8_t *commitment, size_t commitment_len,
+            const uint8_t *opening, size_t opening_len);
+
 /** 
- * Commit to a bit.
+ * Commit to a bit producing a zk proof of pre-image knowledge.
  *
  * @param[in] bit                 The bit to commit. Must be 0 or 1.
  * @param[in] proof_file_path     The path where the MPCitH ZK proof will be written
@@ -51,21 +82,6 @@ int hm_bit_commit(uint8_t bit, const char *proof_file_path,
  */
 int hm_bit_verify(const uint8_t *commitment, size_t commitment_len,
                   const char *proof_file_path);
-
-/**
- * Open the Halevi-Micali commitment for a given input bit.
- *
- * @param[in] bit                 The bit to open
- * @param[in] commitment          The Halevi-Micali commitment
- * @param[in] commitment_len      The length of Halevi-Micali commitment, in bytes.
- * @param[in] opening             The Halevi-Micali opening
- * @param[in] opening_len         The length of Halevi-Micali opening, in bytes.
- *
- * @return Returns 0 if the bit was successfully openened, or 
- * a non-zero value indicating an error or invalid opening.
- */
-int hm_bit_open(uint8_t bit, const uint8_t *commitment, size_t commitment_len,
-                const uint8_t *opening, size_t opening_len);
 
 #ifdef __cplusplus
 }

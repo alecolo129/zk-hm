@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <openssl/rand.h>
 #include <cstring>
+#include <vector>
 
 #include "hm.h"
 #include "mpc_universal_hash.h"
@@ -19,7 +20,7 @@ TEST_F(HMCommit, BitCommitVerifyCorrectnessTest) {
   hm_buffer_t opening;
 
   for (int i = 0; i < 2; i++) {
-    int bit = i % 2;
+    uint8_t bit = i % 2;
 
     // commit
     ASSERT_EQ(hm_bit_commit(bit, "out_test.bin", &commitment, &opening), 0);
@@ -29,7 +30,7 @@ TEST_F(HMCommit, BitCommitVerifyCorrectnessTest) {
               0);
 
     // verify commitment given opening
-    EXPECT_EQ(hm_bit_open(bit, commitment.data, commitment.len, opening.data,
+    EXPECT_EQ(hm_verify(&bit, 1, commitment.data, commitment.len, opening.data,
                           opening.len),
               0);
     // cleanup
@@ -46,7 +47,7 @@ TEST_F(HMCommit, BitCommitVerifySoundnessTest) {
   hm_buffer_t opening2;
 
   for (int i = 0; i < 2; i++) {
-    int bit = i % 2;
+    uint8_t bit = i % 2;
 
     // commit
     ASSERT_EQ(hm_bit_commit(bit, "out_test1.bin", &commitment1, &opening1), 0);
@@ -61,12 +62,13 @@ TEST_F(HMCommit, BitCommitVerifySoundnessTest) {
               -1);
 
     // wrong input bit
-    EXPECT_EQ(hm_bit_open((bit + 1) % 2, commitment1.data, commitment1.len,
+    uint8_t wrong_bit = (bit + 1) % 2;
+    EXPECT_EQ(hm_verify(&wrong_bit, 1, commitment1.data, commitment1.len,
                           opening1.data, opening1.len),
               -1);
 
     // wrong opening
-    EXPECT_EQ(hm_bit_open(bit, commitment1.data, commitment1.len, opening2.data,
+    EXPECT_EQ(hm_verify(&bit, 1, commitment1.data, commitment1.len, opening2.data,
                           opening2.len),
               -1);
 
@@ -75,6 +77,126 @@ TEST_F(HMCommit, BitCommitVerifySoundnessTest) {
     hm_buffer_free(&commitment2);
     hm_buffer_free(&opening2);
   }
+}
+
+static constexpr size_t BytesForBits(size_t bit_len) {
+  return (bit_len + 7u) / 8u;
+}
+
+static size_t NonZkOpeningBytes(size_t message_bit_len) {
+  return (4u * K + 2u * message_bit_len + 4u + 7u) / 8u;
+}
+
+static std::vector<uint8_t> MakeMessage(size_t bit_len) {
+  std::vector<uint8_t> message(BytesForBits(bit_len));
+  for (size_t i = 0; i < message.size(); i++) {
+    message[i] = (uint8_t)(0xa5u ^ (uint8_t)(17u * i) ^ (uint8_t)bit_len);
+  }
+  return message;
+}
+
+TEST_F(HMCommit, NonZkCommitOpenRoundTripsArbitraryBitLengths) {
+  const size_t bit_lengths[] = {1, 4, 7, 8, 9, 31, 32, 33, 257, 1024};
+
+  for (size_t bit_len : bit_lengths) {
+    std::vector<uint8_t> message = MakeMessage(bit_len);
+    hm_buffer_t commitment = {};
+    hm_buffer_t opening = {};
+
+    const uint8_t *message_ptr = message.empty() ? NULL : message.data();
+    ASSERT_EQ(hm_commit(message_ptr, bit_len, &commitment, &opening), 0)
+        << "bit_len=" << bit_len;
+
+    EXPECT_EQ(commitment.len,
+              16u + BytesForBits(bit_len) + SHA256_DIGEST_LENGTH);
+    EXPECT_EQ(opening.len, NonZkOpeningBytes(bit_len));
+
+    EXPECT_EQ(hm_verify(message_ptr, bit_len, commitment.data, commitment.len,
+                      opening.data, opening.len),
+              0)
+        << "bit_len=" << bit_len;
+
+    hm_buffer_free(&commitment);
+    hm_buffer_free(&opening);
+  }
+}
+
+TEST_F(HMCommit, NonZkFourBitMessagesAreCoveredExplicitly) {
+  uint8_t message = 0x0au;
+  hm_buffer_t commitment = {};
+  hm_buffer_t opening = {};
+
+  ASSERT_EQ(hm_commit(&message, 4, &commitment, &opening), 0);
+  EXPECT_EQ(hm_verify(&message, 4, commitment.data, commitment.len, opening.data,
+                    opening.len),
+            0);
+
+  uint8_t wrong_message = (uint8_t)(message ^ 0x01u);
+  EXPECT_EQ(hm_verify(&wrong_message, 4, commitment.data, commitment.len,
+                    opening.data, opening.len),
+            -1);
+
+  uint8_t same_low_bits = (uint8_t)(message ^ 0xf0u);
+  EXPECT_EQ(hm_verify(&same_low_bits, 4, commitment.data, commitment.len,
+                    opening.data, opening.len),
+            0);
+
+  hm_buffer_free(&commitment);
+  hm_buffer_free(&opening);
+}
+
+TEST_F(HMCommit, NonZkOpenRejectsTampering) {
+  std::vector<uint8_t> message = MakeMessage(1024);
+  hm_buffer_t commitment = {};
+  hm_buffer_t opening = {};
+
+  ASSERT_EQ(hm_commit(message.data(), 1024, &commitment, &opening), 0);
+
+  std::vector<uint8_t> tampered_commitment(commitment.data,
+                                           commitment.data + commitment.len);
+  tampered_commitment[0] ^= 0x01u;
+  EXPECT_EQ(hm_verify(message.data(), 1024, tampered_commitment.data(),
+                    tampered_commitment.size(), opening.data, opening.len),
+            -1);
+
+  tampered_commitment.assign(commitment.data, commitment.data + commitment.len);
+  tampered_commitment[16] ^= 0x01u;
+  EXPECT_EQ(hm_verify(message.data(), 1024, tampered_commitment.data(),
+                    tampered_commitment.size(), opening.data, opening.len),
+            -1);
+
+  tampered_commitment.assign(commitment.data, commitment.data + commitment.len);
+  tampered_commitment[tampered_commitment.size() - 1u] ^= 0x01u;
+  EXPECT_EQ(hm_verify(message.data(), 1024, tampered_commitment.data(),
+                    tampered_commitment.size(), opening.data, opening.len),
+            -1);
+
+  std::vector<uint8_t> tampered_opening(opening.data,
+                                        opening.data + opening.len);
+  tampered_opening[0] ^= 0x01u;
+  EXPECT_EQ(hm_verify(message.data(), 1024, commitment.data, commitment.len,
+                    tampered_opening.data(), tampered_opening.size()),
+            -1);
+
+  hm_buffer_free(&commitment);
+  hm_buffer_free(&opening);
+}
+
+TEST_F(HMCommit, NonZkOpenRejectsWrongMessageBit) {
+  std::vector<uint8_t> message = MakeMessage(33);
+  hm_buffer_t commitment = {};
+  hm_buffer_t opening = {};
+
+  ASSERT_EQ(hm_commit(message.data(), 33, &commitment, &opening), 0);
+
+  std::vector<uint8_t> wrong_message = message;
+  wrong_message[2] ^= 0x04u;
+  EXPECT_EQ(hm_verify(wrong_message.data(), 33, commitment.data, commitment.len,
+                    opening.data, opening.len),
+            -1);
+
+  hm_buffer_free(&commitment);
+  hm_buffer_free(&opening);
 }
 
 TEST(MPCUniversalHashTest, InnerProductUsesWordBackedShares) {

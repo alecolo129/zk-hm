@@ -15,6 +15,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -26,6 +27,143 @@ static inline int test_randomness() {
     return -1;
   }
   return 0;
+}
+
+static inline size_t ceil_bits_to_bytes(size_t bits) {
+  return (bits + 7) / 8;
+}
+
+static inline void compute_sizes(size_t message_bit_len,
+                                 size_t *message_byte_len, size_t *opening_len,
+                                 size_t *l_words, size_t *a_words,
+                                 size_t *commitment_len) {
+  *message_byte_len = ceil_bits_to_bytes(message_bit_len);
+
+  size_t min_l_bits = 4u * K + 2u * message_bit_len + 4u;
+  *opening_len = ceil_bits_to_bytes(min_l_bits);
+  size_t l_bits = *opening_len * 8u;
+  *l_words = (l_bits + 31u) / 32u;
+
+  size_t max_base_word = (message_bit_len - 1u) / 32u;
+  *a_words = max_base_word + *l_words + 1u;
+  *commitment_len = 16u + *message_byte_len + SHA256_DIGEST_LENGTH;
+}
+
+int hm_commit(const uint8_t *message, size_t message_bit_len,
+              hm_buffer_t *commitment_out, hm_buffer_t *opening_out) {
+  if (!message || !commitment_out || !opening_out || message_bit_len == 0) {
+    LOG_ERRF("invalid inputs\n");
+    return -1;
+  }
+
+  commitment_out->data = NULL;
+  commitment_out->len = 0;
+  opening_out->data = NULL;
+  opening_out->len = 0;
+
+  // compute sizes
+  size_t message_byte_len = 0;
+  size_t opening_len = 0;
+  size_t l_words = 0;
+  size_t a_words = 0;
+  size_t commitment_len = 0;
+  compute_sizes(message_bit_len, &message_byte_len, &opening_len, &l_words,
+                &a_words, &commitment_len);
+
+  // allocate buffers
+  uint32_t *A = malloc(a_words * sizeof(uint32_t));
+  uint32_t *r_words = malloc(l_words * sizeof(uint32_t));
+  commitment_out->data = malloc(commitment_len);
+  opening_out->data = malloc(opening_len);
+  if (!A || !r_words || !commitment_out->data || !opening_out->data) {
+    LOG_ERRF("malloc failure\n");
+    goto fail;
+  }
+  commitment_out->len = commitment_len;
+  opening_out->len = opening_len;
+
+  uint8_t *keyA = commitment_out->data;
+  uint8_t *b = commitment_out->data + 16u;
+  uint8_t *digest = commitment_out->data + 16u + message_byte_len;
+
+  // pick UH key and r vector
+  if (RAND_bytes(keyA, 16u) != 1 ||
+      RAND_bytes(opening_out->data, opening_len) != 1) {
+    LOG_ERRF("RAND_bytes failure\n");
+    goto fail;
+  }
+
+  // TODO: generate_H
+  expand_A(A, a_words, keyA);
+  universal_hash_load_words(r_words, opening_out->data, opening_len, l_words);
+
+  universal_hash_compute_b(b, A, r_words, l_words, message, message_bit_len);
+  SHA256(opening_out->data, opening_len, digest);
+
+  free(A);
+  free(r_words);
+  return 0;
+
+fail:
+  free(A);
+  free(r_words);
+  hm_buffer_free(commitment_out);
+  hm_buffer_free(opening_out);
+  return -1;
+}
+
+int hm_verify(const uint8_t *message, size_t message_bit_len,
+            const uint8_t *commitment, size_t commitment_len,
+            const uint8_t *opening, size_t opening_len) {
+  if (!message || !commitment || !opening || message_bit_len == 0) {
+    LOG_ERRF("invalid inputs\n");
+    return -1;
+  }
+
+  size_t message_byte_len = 0;
+  size_t expected_opening_len = 0;
+  size_t l_words = 0;
+  size_t a_words = 0;
+  size_t expected_commitment_len = 0;
+  compute_sizes(message_bit_len, &message_byte_len, &expected_opening_len,
+                &l_words, &a_words, &expected_commitment_len);
+  if (commitment_len != expected_commitment_len ||
+      opening_len != expected_opening_len) {
+    LOG_ERRF("invalid input sizes\n");
+    return -1;
+  }
+
+  const uint8_t *keyA = commitment;
+  const uint8_t *b = commitment + 16u;
+  const uint8_t *digest = commitment + 16u + message_byte_len;
+
+  // verify hash of r
+  uint8_t digest_rec[SHA256_DIGEST_LENGTH];
+  SHA256(opening, opening_len, digest_rec);
+  if (memcmp(digest, digest_rec, SHA256_DIGEST_LENGTH) != 0) {
+    LOG_ERRF("verification failed\n");
+    return -1;
+  }
+
+  uint32_t *A = malloc(a_words * sizeof(uint32_t));
+  uint32_t *r_words = malloc(l_words * sizeof(uint32_t));
+  if (!A || !r_words) {
+    LOG_ERRF("malloc failure\n");
+    free(A);
+    free(r_words);
+    return -1;
+  }
+
+  // verify universal hash
+  expand_A(A, a_words, keyA);
+  universal_hash_load_words(r_words, opening, opening_len, l_words);
+  int ret =
+      universal_hash_verify_message(message, message_bit_len, b, A, r_words,
+                                    l_words);
+
+  free(A);
+  free(r_words);
+  return ret;
 }
 
 static inline void pick_universal_hash(UniversalHash *h, const uint8_t keyA[16],
@@ -194,7 +332,7 @@ int hm_bit_verify(const uint8_t *commitment, size_t commitment_len,
   }
 
   // Expend universal hash from key
-  expand_A(h.A, h.keyA);
+  expand_A(h.A, A_WORDS, h.keyA);
 
   // Setup hash context
   EVP_MD_CTX *base_ctx = setupSHA256();
@@ -247,50 +385,4 @@ fail:
   if (file)
     fclose(file);
   return -1;
-}
-
-int hm_bit_open(uint8_t bit, const uint8_t *commitment, size_t commitment_len,
-                const uint8_t *opening, size_t opening_len) {
-  if (!opening || opening_len != L_BYTES) {
-    LOG_ERRF("Invalid sizes");
-    return -1;
-  }
-
-  if (bit != 0 && bit != 1) {
-    LOG_ERRF("Must commit to bit");
-    return -1;
-  }
-
-  UniversalHash h;
-  uint8_t y[SHA256_DIGEST_LENGTH];
-  if (read_hm_commitment(commitment, commitment_len, &h,
-                                            y) != 0) {
-    LOG_ERRF("Cannot read commitment");
-    return -1;
-  }
-
-  // verify committed vector is valid for opening
-  uint8_t y_rec[SHA256_DIGEST_LENGTH];
-  SHA256(opening, opening_len, y_rec);
-  if (memcmp(y, y_rec, SHA256_DIGEST_LENGTH) != 0) {
-    LOG_ERRF("Commitment to opening did not verify");
-    return -1;
-  }
-
-  // expend universal hash from key
-  expand_A(h.A, h.keyA);
-
-  // H(r) = Ar + b
-  RVec r;
-  rvec_from_bytes(&r, opening);
-
-  uint32_t acc = 0;
-  for (int i = 0; i < L_WORDS; i++) {
-    acc ^= h.A[i] & r.words[i];
-  }
-  acc = __builtin_parity(acc);
-  acc ^= h.b[0] & 1;
-
-  // commit verifies iff H(r) = m
-  return (acc == bit) ? 0 : -1;
 }
