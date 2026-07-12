@@ -39,14 +39,7 @@ int main(void) {
     goto cleanup;
   }
 
-  // Full disclosure
-  if (hm_bit_open(bit, commitment.data, commitment.len, opening.data,
-                  opening.len) != 0) {
-    fprintf(stderr, "hm_bit_open failed\n");
-    goto cleanup;
-  }
-
-  printf("Proof verified and commitment opened successfully\n");
+  printf("Proof verified successfully\n");
   ret = 0;
 
 cleanup:

@@ -69,15 +69,7 @@ int main() {
     return 1;
   }
 
-  // Full disclosure
-  if (hm_bit_open(bit, commitment.data(), commitment.size(), opening.data(),
-                  opening.size()) != 0) {
-    std::cerr << "hm_bit_open failed\n";
-    std::remove(proof_path);
-    return 1;
-  }
-
-  std::cout << "Proof verified and commitment opened successfully\n";
+  std::cout << "Proof verified successfully\n";
   std::remove(proof_path);
   return 0;
 }

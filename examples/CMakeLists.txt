@@ -5,3 +5,9 @@ target_link_libraries(hm_bit_commit_c PRIVATE hm_mpc)
 
 add_executable(hm_bit_commit_cpp bit_commit.cpp)
 target_link_libraries(hm_bit_commit_cpp PRIVATE hm_mpc)
+
+add_executable(hm_commit_c commit.c)
+target_link_libraries(hm_commit_c PRIVATE hm_mpc)
+
+add_executable(hm_commit_cpp commit.cpp)
+target_link_libraries(hm_commit_cpp PRIVATE hm_mpc)
