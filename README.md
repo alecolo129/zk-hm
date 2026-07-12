@@ -4,6 +4,7 @@ This repository implements a **ZKBoo-style proof of SHA-256 preimage knowledge**
 
 It extends the MPC-in-the-head SHA-256 proof by supporting **arbitrary-length inputs** (multiple SHA-256 rounds), and integrating a **universal hashing step**.
 
+The repository also implements plain Halevi-Micali commitments for bit-string messages.
 
 ## Build
 
@@ -37,18 +38,26 @@ ctest --test-dir build --output-on-failure
 
 The public API is declared in `include/hm.h`. 
 
-A typical zero-knowledge bit-commitment flow is:
-1. call `hm_bit_commit()` to create a commitment, opening, and proof file;
-2. call `hm_bit_verify()` to verify the proof file against the commitment;
+The library supports plain HM commitments of bit-strings.
+A typical HM commitment flow is:
+1. call `hm_commit()` to commit to a *message*, producing a *commitment* and an *opening*;
+2. call `hm_verify()` to verify the *commitment* against the input *message* and *opening*;
 3. release library-owned buffers with `hm_buffer_free()`.
 
-In the non zero-knowledge setting (where the opening is also known), the verifier can just call `hm_bit_open()`, which directly verifies the halevi-micali commitment against the opening and the input bit.
-
+For bit-commitments, the library also support zero-knowledge proofs of pre-image knwoledge.
+A typical zero-knowledge bit-commitment flow is:
+1. call `hm_bit_commit()` to commit to a *bit*, producing a *commitment*, an *opening*, and a *proof file*;
+2. call `hm_bit_verify()` to verify the *proof file* against the input *bit* and *commitment*;
+3. release library-owned buffers with `hm_buffer_free()`.
 
 C and C++ examples are available in `examples/` and are disabled by default:
 
 ```bash
 ./build.sh -e
+# plain HM commitments
+./build/examples/hm_commit_c
+./build/examples/hm_commit_cpp
+# zk HM bit-commitments
 ./build/examples/hm_bit_commit_c
 ./build/examples/hm_bit_commit_cpp
 ```

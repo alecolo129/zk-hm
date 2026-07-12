@@ -93,11 +93,12 @@ int hm_commit(const uint8_t *message, size_t message_bit_len,
     goto fail;
   }
 
-  // TODO: generate_H
+  // generate H from key
   expand_A(A, a_words, keyA);
   universal_hash_load_words(r_words, opening_out->data, opening_len, l_words);
-
   universal_hash_compute_b(b, A, r_words, l_words, message, message_bit_len);
+  
+  // compute H(r)
   SHA256(opening_out->data, opening_len, digest);
 
   free(A);

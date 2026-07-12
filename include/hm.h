@@ -26,7 +26,7 @@ void hm_buffer_free(hm_buffer_t *buf);
 /**
  * Commit to an arbitrary-length bit string.
  *
- * @param[in] message             The message bytes. Bits are read LSB-first
+ * @param[in] message             The message bits. Bits are read LSB-first
  * @param[in] message_bit_len     The number of message bits to commit
  * @param[out] commitment_out     The Halevi-Micali commitment
  * @param[out] opening_out        The Halevi-Micali opening
@@ -40,8 +40,8 @@ int hm_commit(const uint8_t *message, size_t message_bit_len,
 /**
  * Verifies the commitment against the input bit string and opening.
  *
- * @param[in] message             The message bytes. Bits are read LSB-first
- * @param[in] message_bit_len     The number of message bits to open
+ * @param[in] message             The message bits. Bits are read LSB-first
+ * @param[in] message_bit_len     The number of message bits to verify
  * @param[in] commitment          The Halevi-Micali commitment
  * @param[in] commitment_len      The length of Halevi-Micali commitment, in bytes
  * @param[in] opening             The Halevi-Micali opening
