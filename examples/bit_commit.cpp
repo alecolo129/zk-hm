@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
+#include <filesystem>
 
 class HmBuffer {
 public:
@@ -59,21 +60,16 @@ int main() {
   std::cout << "Committed to bit " << static_cast<unsigned>(bit) << '\n';
   std::cout << "commitment: " << commitment.size() << " bytes\n";
   std::cout << "opening: " << opening.size() << " bytes\n";
+  std::cout << "proof: " << std::filesystem::file_size(proof_path) << " bytes\n";
 
+  // Zero-Knowledge verification (proof of commitment pre-image)
   if (hm_bit_verify(commitment.data(), commitment.size(), proof_path) != 0) {
     std::cerr << "hm_bit_verify failed\n";
     std::remove(proof_path);
     return 1;
   }
 
-  if (hm_bit_open(bit, commitment.data(), commitment.size(), opening.data(),
-                  opening.size()) != 0) {
-    std::cerr << "hm_bit_open failed\n";
-    std::remove(proof_path);
-    return 1;
-  }
-
-  std::cout << "Proof verified and commitment opened successfully\n";
+  std::cout << "Proof verified successfully\n";
   std::remove(proof_path);
   return 0;
 }

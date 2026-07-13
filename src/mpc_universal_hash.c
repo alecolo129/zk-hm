@@ -7,12 +7,42 @@
 #include <stdio.h>
 #include <string.h>
 
-void expand_A(uint32_t A[A_WORDS], const uint8_t keyA[16]) {
+
+static inline uint32_t load_window32(const uint32_t *A, size_t idx,
+                                     size_t rShift) {
+  // Build 64 bits: [A[idx+1] | A[idx]] and shift right by rShift
+  // Works for rShift == 0..31 safely.
+  uint64_t lane = ((uint64_t)A[idx + 1] << 32) | A[idx];
+  return (uint32_t)(lane >> rShift);
+}
+
+static inline uint32_t load_u32_le_partial(const uint8_t *src, size_t src_len,
+                                           size_t word_idx) {
+  size_t off = word_idx * 4u;
+  uint32_t word = 0;
+  for (size_t i = 0; i < 4u && off + i < src_len; i++) {
+    word |= ((uint32_t)src[off + i]) << (8u * i);
+  }
+  return word;
+}
+
+static inline uint32_t mask_l_word(uint32_t word, int idx) {
+  return (idx == L_WORDS - 1) ? (word & L_LAST_WORD_MASK) : word;
+}
+
+void universal_hash_load_words(uint32_t *dst_words, const uint8_t *src,
+                               size_t src_len, size_t word_len) {
+  for (size_t i = 0; i < word_len; i++) {
+    dst_words[i] = load_u32_le_partial(src, src_len, i);
+  }
+}
+
+void expand_A(uint32_t *A, size_t a_words, const uint8_t keyA[16]) {
   EVP_CIPHER_CTX *ctx = setupAES(keyA);
 
   uint8_t *bytesA = (uint8_t *)A;
   const uint8_t zero[4096] = {0};
-  size_t outBytesLen = A_BYTES;
+  size_t outBytesLen = a_words * sizeof(uint32_t);
   while (outBytesLen) {
     int chunk =
         (outBytesLen > sizeof(zero)) ? (int)sizeof(zero) : (int)outBytesLen;
@@ -23,26 +53,56 @@ void expand_A(uint32_t A[A_WORDS], const uint8_t keyA[16]) {
     bytesA += produced;
     outBytesLen -= (size_t)produced;
   }
-  A[A_WORDS - 1] = 0; // Set padding word to 0
+  A[a_words - 1] = 0; // Set padding word to 0
   EVP_CIPHER_CTX_free(ctx);
 }
 
-static inline uint32_t load_window32(const uint32_t *A, int idx,
-                                     uint32_t rShift) {
-  // Build 64 bits: [A[idx+1] | A[idx]] and shift right by rShift
-  // Works for rShift == 0..31 safely.
-  uint64_t lane = ((uint64_t)A[idx + 1] << 32) | A[idx];
-  return (uint32_t)(lane >> rShift);
+void universal_hash_compute_b(uint8_t *b, const uint32_t *A,
+                              const uint32_t *r_words, size_t l_words,
+                              const uint8_t *message,
+                              size_t message_bit_len) {
+  size_t message_byte_len = (message_bit_len + 7u) / 8u;
+  memset(b, 0, message_byte_len);
+
+  for (size_t i = 0; i < message_bit_len; i++) {
+    size_t rShift = i % 32u;
+    size_t base = i / 32u;
+    uint32_t acc = 0;
+
+    for (size_t j = 0; j < l_words; j++) {
+      acc ^= load_window32(A, base + j, rShift) & r_words[j];
+    }
+
+    uint8_t bit = (uint8_t)(__builtin_parity(acc) ^ GETBIT(message[i/8], i%8));
+    SETBIT(b[i/8], i%8, bit);
+  }
 }
 
-static inline uint32_t mask_l_word(uint32_t word, int idx) {
-  return (idx == L_WORDS - 1) ? (word & L_LAST_WORD_MASK) : word;
+int universal_hash_verify_message(const uint8_t *message,
+                                  size_t message_bit_len, const uint8_t *b,
+                                  const uint32_t *A,
+                                  const uint32_t *r_words, size_t l_words) {
+  for (size_t i = 0; i < message_bit_len; i++) {
+    size_t wordIdx = i % 32u;
+    size_t bitIdx = i / 32u;
+    uint32_t acc = 0;
+
+    for (size_t j = 0; j < l_words; j++) {
+      acc ^= load_window32(A, bitIdx + j, wordIdx) & r_words[j];
+    }
+
+    uint8_t rec = (uint8_t)(__builtin_parity(acc) ^ GETBIT(b[i/8], i%8));
+    if (rec != GETBIT(message[i/8], i%8)) {
+      return -1;
+    }
+  }
+  return 0;
 }
 
 void generate_H(uint32_t A[A_WORDS], uint8_t b[MSG_BYTES],
                 const uint8_t keyH[16], const uint8_t m[MSG_BYTES],
                 const RVec *r) {
-  expand_A(A, keyH);
+  expand_A(A, A_WORDS, keyH);
   for (int i = 0; i < MSG_BITS; i++) {
     uint32_t rShift = i % 32;
     uint32_t base = i / 32;

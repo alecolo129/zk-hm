@@ -21,15 +21,17 @@ static void make_xor_shares(RVec shares[3], const RVec *msg) {
 }
 
 // XOR combine three 32-byte digests
-static void xor3_digest(uint32_t out[8], uint32_t *d0, uint32_t *d1,
-                        uint32_t *d2) {
-  for (int i = 0; i < 8; i++) {
+static void xor3_digest(uint32_t out[SHA256_DIGEST_WORDS],
+                        const uint32_t d0[SHA256_DIGEST_WORDS],
+                        const uint32_t d1[SHA256_DIGEST_WORDS],
+                        const uint32_t d2[SHA256_DIGEST_WORDS]) {
+  for (int i = 0; i < SHA256_DIGEST_WORDS; i++) {
     out[i] = d0[i] ^ d1[i] ^ d2[i];
   }
 }
 
-static void hexprint_digest(const uint32_t digest[8]) {
-  for (size_t i = 0; i < 8; i++)
+static void hexprint_digest(const uint32_t digest[SHA256_DIGEST_WORDS]) {
+  for (size_t i = 0; i < SHA256_DIGEST_WORDS; i++)
     printf("%02x", digest[i]);
   printf("\n");
 }
@@ -61,12 +63,13 @@ TEST(MPCSha256Test, test) {
   make_xor_shares(shares, &msg_as);
 
   // generate zk-prove
-  mpc_sha256_prove(shares, randomness, views);
-  uint32_t mpc_digest[8];
-  xor3_digest(mpc_digest, &views[0]->y[ySize - 8], &views[1]->y[ySize - 8],
-              &views[2]->y[ySize - 8]);
+  uint32_t output_shares[3][SHA256_DIGEST_WORDS];
+  mpc_sha256_prove(shares, randomness, views, output_shares);
+  uint32_t mpc_digest[SHA256_DIGEST_WORDS];
+  xor3_digest(mpc_digest, output_shares[0], output_shares[1],
+              output_shares[2]);
   unsigned char actual[32];
-  for (int i = 0; i < 8; ++i) {
+  for (int i = 0; i < SHA256_DIGEST_WORDS; ++i) {
     store_u32_be(mpc_digest[i], &actual[i * 4]);
   }
 

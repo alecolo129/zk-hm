@@ -3,6 +3,18 @@
 #include <stdint.h>
 #include <stdio.h>
 
+long get_file_size(const char *filename) {
+    FILE *file = fopen(filename, "rb");
+    if (!file) {
+        return -1;
+    }
+
+    fseek(file, 0, SEEK_END);
+    long size = ftell(file);
+    fclose(file);
+    return size;
+}
+
 int main(void) {
   const uint8_t bit = 1;
   const char *proof_path = "hm_c_example_proof.bin";
@@ -19,19 +31,15 @@ int main(void) {
   printf("Committed to bit %u\n", (unsigned)bit);
   printf("commitment: %zu bytes\n", commitment.len);
   printf("opening: %zu bytes\n", opening.len);
+  printf("proof: %lu bytes\n", get_file_size(proof_path));
 
+  // Zero-Knowledge verification (proof of commitment pre-image)
   if (hm_bit_verify(commitment.data, commitment.len, proof_path) != 0) {
     fprintf(stderr, "hm_bit_verify failed\n");
     goto cleanup;
   }
 
-  if (hm_bit_open(bit, commitment.data, commitment.len, opening.data,
-                  opening.len) != 0) {
-    fprintf(stderr, "hm_bit_open failed\n");
-    goto cleanup;
-  }
-
-  printf("Proof verified and commitment opened successfully\n");
+  printf("Proof verified successfully\n");
   ret = 0;
 
 cleanup:
