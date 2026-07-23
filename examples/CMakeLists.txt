@@ -11,3 +11,9 @@ target_link_libraries(hm_commit_c PRIVATE hm_mpc)
 
 add_executable(hm_commit_cpp commit.cpp)
 target_link_libraries(hm_commit_cpp PRIVATE hm_mpc)
+
+add_executable(hm_commit_batch_c commit_batch.c)
+target_link_libraries(hm_commit_batch_c PRIVATE hm_mpc)
+
+add_executable(hm_commit_batch_cpp commit_batch.cpp)
+target_link_libraries(hm_commit_batch_cpp PRIVATE hm_mpc)
