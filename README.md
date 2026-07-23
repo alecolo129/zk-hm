@@ -40,9 +40,13 @@ The public API is declared in `include/hm.h`.
 
 The library supports plain HM commitments of bit-strings.
 A typical HM commitment flow is:
-1. call `hm_commit()` to commit to a *message*, producing a *commitment* and an *opening*;
-2. call `hm_verify()` to verify the *commitment* against the input *message* and *opening*;
-3. release library-owned buffers with `hm_buffer_free()`.
+1. call `hm_commit_get_sizes()` to obtain the required output sizes;
+2. allocate caller-owned buffers for the *commitment* and *opening*;
+3. call `hm_commit()` to write into those buffers;
+4. call `hm_verify()` to verify the *commitment* against the input *message* and *opening*.
+
+For batches, the caller can allocate contiguous commitment and opening arrays
+once and pass an appropriately sized slice to each `hm_commit()` call.
 
 For bit-commitments, the library also support zero-knowledge proofs of pre-image knwoledge.
 A typical zero-knowledge bit-commitment flow is:
@@ -57,6 +61,9 @@ C and C++ examples are available in `examples/` and are disabled by default:
 # plain HM commitments
 ./build/examples/hm_commit_c
 ./build/examples/hm_commit_cpp
+# plain HM commitments with batch allocation
+./build/examples/hm_commit_batch_c
+./build/examples/hm_commit_batch_cpp
 # zk HM bit-commitments
 ./build/examples/hm_bit_commit_c
 ./build/examples/hm_bit_commit_cpp
