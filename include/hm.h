@@ -1,41 +1,49 @@
 #pragma once
+#include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+/**
+ * Required output sizes for a plain Halevi-Micali commitment.
+ */
+typedef struct hm_commit_sizes_t {
+  size_t commitment_len;
+  size_t opening_len;
+} hm_commit_sizes_t;
 
-/*
- * Byte buffers owned by the library.
+/**
+ * Compute the output sizes required to commit to a bit string.
  *
- * The caller must release buffers using hm_buffer_free().
- * TODO: specialize for bit commitment
+ * @param[in] message_bit_len     The number of message bits to commit
+ * @param[out] sizes_out          The required commitment and opening sizes
+ *
+ * @return Returns 0 if the sizes were computed successfully, or a non-zero
+ * value if the input is invalid or the message length exceeds the maximum supported length.
  */
- typedef struct hm_buffer_t {
-  uint8_t *data;
-  size_t len;
-} hm_buffer_t;
+int hm_commit_get_sizes(size_t message_bit_len,
+                        hm_commit_sizes_t *sizes_out);
 
 /**
- * Free any buffer allocated by the library.
- */
-void hm_buffer_free(hm_buffer_t *buf);
-
-/**
- * Commit to an arbitrary-length bit string.
+ * Commit to an arbitrary-length bit string using caller-owned output buffers.
  *
  * @param[in] message             The message bits. Bits are read LSB-first
  * @param[in] message_bit_len     The number of message bits to commit
- * @param[out] commitment_out     The Halevi-Micali commitment
- * @param[out] opening_out        The Halevi-Micali opening
+ * @param[out] commitment         The buffer receiving the commitment
+ * @param[in] commitment_capacity The vailable bytes in commitment buffer
+ * @param[out] opening            The buffer receiving the opening
+ * @param[in] opening_capacity    The available bytes in opening buffer
  *
  * @return Returns 0 if the commitment was computed successfully, nonzero value
- * indicates failure.
+ * indicates failure. On success, exactly the sizes returned by hm_commit_get_sizes()
+ * are written. The library never frees the supplied buffers. The message, commitment,
+ * and opening memory regions must not overlap.
  */
 int hm_commit(const uint8_t *message, size_t message_bit_len,
-              hm_buffer_t *commitment_out, hm_buffer_t *opening_out);
+              uint8_t *commitment, size_t commitment_capacity,
+              uint8_t *opening, size_t opening_capacity);
 
 /**
  * Verifies the commitment against the input bit string and opening.
@@ -53,6 +61,25 @@ int hm_commit(const uint8_t *message, size_t message_bit_len,
 int hm_verify(const uint8_t *message, size_t message_bit_len,
             const uint8_t *commitment, size_t commitment_len,
             const uint8_t *opening, size_t opening_len);
+
+
+
+
+/*
+ * Byte buffers owned by the library.
+ *
+ * The caller must release buffers using hm_buffer_free(). Plain commitments
+ * use caller-owned buffers instead.
+ */
+typedef struct hm_buffer_t {
+  uint8_t *data;
+  size_t len;
+} hm_buffer_t;
+
+/**
+ * Free any buffer allocated by the library.
+ */
+void hm_buffer_free(hm_buffer_t *buf);
 
 /** 
  * Commit to a bit producing a zk proof of pre-image knowledge.

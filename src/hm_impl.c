@@ -9,6 +9,7 @@
 #include "shared.h"
 #include "thread_state.h"
 #include "utils.h"
+#include <limits.h>
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <stdatomic.h>
@@ -20,6 +21,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+// TODO: consider adjusting this value
+#define MAX_MSG_BITLEN 10000000
+
 static inline int test_randomness() {
   uint8_t garbage[4];
   if (RAND_bytes(garbage, 4) != 1) {
@@ -29,77 +33,104 @@ static inline int test_randomness() {
   return 0;
 }
 
-static inline size_t ceil_bits_to_bytes(size_t bits) {
-  return (bits + 7) / 8;
+typedef struct {
+  size_t message_byte_len;
+  size_t opening_len;
+  size_t l_words;
+  size_t a_words;
+  size_t commitment_len;
+} HmCommitLayout;
+
+static inline size_t ceil_div_size(size_t value, size_t divisor) {
+  return value / divisor + (value % divisor != 0);
 }
 
-static inline void compute_sizes(size_t message_bit_len,
-                                 size_t *message_byte_len, size_t *opening_len,
-                                 size_t *l_words, size_t *a_words,
-                                 size_t *commitment_len) {
-  *message_byte_len = ceil_bits_to_bytes(message_bit_len);
+static int compute_sizes(size_t message_bit_len, HmCommitLayout *layout) {
+  if (!layout || message_bit_len == 0 || message_bit_len > MAX_MSG_BITLEN) {
+    return -1;
+  }
 
-  size_t min_l_bits = 4u * K + 2u * message_bit_len + 4u;
-  *opening_len = ceil_bits_to_bytes(min_l_bits);
-  size_t l_bits = *opening_len * 8u;
-  *l_words = (l_bits + 31u) / 32u;
+  layout->message_byte_len = ceil_div_size(message_bit_len, 8u);
+
+  size_t min_l_bits = 4u * (size_t)K + 2u * message_bit_len + 4u;
+  layout->opening_len = ceil_div_size(min_l_bits, 8u);
+
+  size_t l_bits = layout->opening_len * 8u;
+  layout->l_words = ceil_div_size(l_bits, 32u);
 
   size_t max_base_word = (message_bit_len - 1u) / 32u;
-  *a_words = max_base_word + *l_words + 1u;
-  *commitment_len = 16u + *message_byte_len + SHA256_DIGEST_LENGTH;
+  layout->a_words = max_base_word + layout->l_words + 1u;
+
+  layout->commitment_len =
+      16u + layout->message_byte_len + SHA256_DIGEST_LENGTH;
+  return 0;
+}
+
+int hm_commit_get_sizes(size_t message_bit_len, hm_commit_sizes_t *sizes_out) {
+  if (!sizes_out) {
+    LOG_ERRF("invalid output pointer\n");
+    return -1;
+  }
+
+  sizes_out->commitment_len = 0;
+  sizes_out->opening_len = 0;
+
+  HmCommitLayout layout;
+  if (compute_sizes(message_bit_len, &layout) != 0) {
+    LOG_ERRF("invalid message bit length\n");
+    return -1;
+  }
+
+  sizes_out->commitment_len = layout.commitment_len;
+  sizes_out->opening_len = layout.opening_len;
+  return 0;
 }
 
 int hm_commit(const uint8_t *message, size_t message_bit_len,
-              hm_buffer_t *commitment_out, hm_buffer_t *opening_out) {
-  if (!message || !commitment_out || !opening_out || message_bit_len == 0) {
+              uint8_t *commitment, size_t commitment_capacity, uint8_t *opening,
+              size_t opening_capacity) {
+  if (!message || !commitment || !opening) {
     LOG_ERRF("invalid inputs\n");
     return -1;
   }
 
-  commitment_out->data = NULL;
-  commitment_out->len = 0;
-  opening_out->data = NULL;
-  opening_out->len = 0;
+  HmCommitLayout layout;
+  if (compute_sizes(message_bit_len, &layout) != 0 ||
+      commitment_capacity < layout.commitment_len ||
+      opening_capacity < layout.opening_len) {
+    LOG_ERRF("invalid input sizes\n");
+    return -1;
+  }
 
-  // compute sizes
-  size_t message_byte_len = 0;
-  size_t opening_len = 0;
-  size_t l_words = 0;
-  size_t a_words = 0;
-  size_t commitment_len = 0;
-  compute_sizes(message_bit_len, &message_byte_len, &opening_len, &l_words,
-                &a_words, &commitment_len);
-
-  // allocate buffers
-  uint32_t *A = malloc(a_words * sizeof(uint32_t));
-  uint32_t *r_words = malloc(l_words * sizeof(uint32_t));
-  commitment_out->data = malloc(commitment_len);
-  opening_out->data = malloc(opening_len);
-  if (!A || !r_words || !commitment_out->data || !opening_out->data) {
+  // Allocate scratch buffers. The commitment and opening are caller-owned.
+  uint32_t *A = malloc(layout.a_words * sizeof(uint32_t));
+  uint32_t *r_words = malloc(layout.l_words * sizeof(uint32_t));
+  if (!A || !r_words) {
     LOG_ERRF("malloc failure\n");
     goto fail;
   }
-  commitment_out->len = commitment_len;
-  opening_out->len = opening_len;
 
-  uint8_t *keyA = commitment_out->data;
-  uint8_t *b = commitment_out->data + 16u;
-  uint8_t *digest = commitment_out->data + 16u + message_byte_len;
+  uint8_t *keyA = commitment;
+  uint8_t *b = commitment + 16u;
+  uint8_t *digest = commitment + 16u + layout.message_byte_len;
 
+  // TODO: should we directly pick the matrix instead?
   // pick UH key and r vector
   if (RAND_bytes(keyA, 16u) != 1 ||
-      RAND_bytes(opening_out->data, opening_len) != 1) {
+      RAND_bytes(opening, layout.opening_len) != 1) {
     LOG_ERRF("RAND_bytes failure\n");
     goto fail;
   }
 
   // generate H from key
-  expand_A(A, a_words, keyA);
-  universal_hash_load_words(r_words, opening_out->data, opening_len, l_words);
-  universal_hash_compute_b(b, A, r_words, l_words, message, message_bit_len);
-  
+  expand_A(A, layout.a_words, keyA);
+  universal_hash_load_words(r_words, opening, layout.opening_len,
+                            layout.l_words);
+  universal_hash_compute_b(b, A, r_words, layout.l_words, message,
+                           message_bit_len);
+
   // compute H(r)
-  SHA256(opening_out->data, opening_len, digest);
+  SHA256(opening, layout.opening_len, digest);
 
   free(A);
   free(r_words);
@@ -108,35 +139,28 @@ int hm_commit(const uint8_t *message, size_t message_bit_len,
 fail:
   free(A);
   free(r_words);
-  hm_buffer_free(commitment_out);
-  hm_buffer_free(opening_out);
   return -1;
 }
 
 int hm_verify(const uint8_t *message, size_t message_bit_len,
-            const uint8_t *commitment, size_t commitment_len,
-            const uint8_t *opening, size_t opening_len) {
+              const uint8_t *commitment, size_t commitment_len,
+              const uint8_t *opening, size_t opening_len) {
   if (!message || !commitment || !opening || message_bit_len == 0) {
     LOG_ERRF("invalid inputs\n");
     return -1;
   }
 
-  size_t message_byte_len = 0;
-  size_t expected_opening_len = 0;
-  size_t l_words = 0;
-  size_t a_words = 0;
-  size_t expected_commitment_len = 0;
-  compute_sizes(message_bit_len, &message_byte_len, &expected_opening_len,
-                &l_words, &a_words, &expected_commitment_len);
-  if (commitment_len != expected_commitment_len ||
-      opening_len != expected_opening_len) {
+  HmCommitLayout layout;
+  if (compute_sizes(message_bit_len, &layout) != 0 ||
+      commitment_len != layout.commitment_len ||
+      opening_len != layout.opening_len) {
     LOG_ERRF("invalid input sizes\n");
     return -1;
   }
 
   const uint8_t *keyA = commitment;
   const uint8_t *b = commitment + 16u;
-  const uint8_t *digest = commitment + 16u + message_byte_len;
+  const uint8_t *digest = commitment + 16u + layout.message_byte_len;
 
   // verify hash of r
   uint8_t digest_rec[SHA256_DIGEST_LENGTH];
@@ -146,8 +170,8 @@ int hm_verify(const uint8_t *message, size_t message_bit_len,
     return -1;
   }
 
-  uint32_t *A = malloc(a_words * sizeof(uint32_t));
-  uint32_t *r_words = malloc(l_words * sizeof(uint32_t));
+  uint32_t *A = malloc(layout.a_words * sizeof(uint32_t));
+  uint32_t *r_words = malloc(layout.l_words * sizeof(uint32_t));
   if (!A || !r_words) {
     LOG_ERRF("malloc failure\n");
     free(A);
@@ -156,11 +180,10 @@ int hm_verify(const uint8_t *message, size_t message_bit_len,
   }
 
   // verify universal hash
-  expand_A(A, a_words, keyA);
-  universal_hash_load_words(r_words, opening, opening_len, l_words);
-  int ret =
-      universal_hash_verify_message(message, message_bit_len, b, A, r_words,
-                                    l_words);
+  expand_A(A, layout.a_words, keyA);
+  universal_hash_load_words(r_words, opening, opening_len, layout.l_words);
+  int ret = universal_hash_verify_message(message, message_bit_len, b, A,
+                                          r_words, layout.l_words);
 
   free(A);
   free(r_words);
@@ -219,7 +242,7 @@ int hm_bit_commit(uint8_t bit, const char *proof_file_path,
 
   // Generating keys
   generate_keys_and_rs(keys, keyH, rs);
-  
+
   // Generate halevi-micali commitment
   UniversalHash h;
   pick_universal_hash(&h, keyH, &r, msg); // pick universal hash function

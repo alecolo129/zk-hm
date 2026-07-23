@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstring>
 #include <gtest/gtest.h>
 #include <openssl/rand.h>
@@ -98,78 +99,160 @@ TEST_F(HMCommit, PlainCommitVerifyVariableBitLengths) {
 
   for (size_t bit_len : bit_lengths) {
     std::vector<uint8_t> message = make_message(bit_len);
-    hm_buffer_t commitment = {};
-    hm_buffer_t opening = {};
+    hm_commit_sizes_t sizes = {};
+    ASSERT_EQ(hm_commit_get_sizes(bit_len, &sizes), 0);
 
-    ASSERT_EQ(hm_commit(message.data(), bit_len, &commitment, &opening), 0)
-        << "bit_len=" << bit_len;
-
-    EXPECT_EQ(commitment.len,
+    EXPECT_EQ(sizes.commitment_len,
               16u + ceil_bits_to_bytes(bit_len) + SHA256_DIGEST_LENGTH);
-    EXPECT_EQ(opening.len, opening_bytes_non_zk(bit_len));
+    EXPECT_EQ(sizes.opening_len, opening_bytes_non_zk(bit_len));
 
-    EXPECT_EQ(hm_verify(message.data(), bit_len, commitment.data,
-                        commitment.len, opening.data, opening.len),
+    std::vector<uint8_t> commitment(sizes.commitment_len);
+    std::vector<uint8_t> opening(sizes.opening_len);
+
+    ASSERT_EQ(hm_commit(message.data(), bit_len, commitment.data(),
+                        commitment.size(), opening.data(), opening.size()),
               0)
         << "bit_len=" << bit_len;
 
-    hm_buffer_free(&commitment);
-    hm_buffer_free(&opening);
+    EXPECT_EQ(hm_verify(message.data(), bit_len, commitment.data(),
+                        commitment.size(), opening.data(), opening.size()),
+              0)
+        << "bit_len=" << bit_len;
   }
 }
 
 TEST_F(HMCommit, PlainVerifyRejectsTampering) {
   std::vector<uint8_t> message = make_message(1024);
-  hm_buffer_t commitment = {};
-  hm_buffer_t opening = {};
+  hm_commit_sizes_t sizes = {};
+  ASSERT_EQ(hm_commit_get_sizes(1024, &sizes), 0);
+  std::vector<uint8_t> commitment(sizes.commitment_len);
+  std::vector<uint8_t> opening(sizes.opening_len);
 
-  ASSERT_EQ(hm_commit(message.data(), 1024, &commitment, &opening), 0);
+  ASSERT_EQ(hm_commit(message.data(), 1024, commitment.data(),
+                      commitment.size(), opening.data(), opening.size()),
+            0);
 
-  std::vector<uint8_t> tampered_commitment(commitment.data,
-                                           commitment.data + commitment.len);
+  std::vector<uint8_t> tampered_commitment = commitment;
   tampered_commitment[0] ^= 0x01u;
   EXPECT_EQ(hm_verify(message.data(), 1024, tampered_commitment.data(),
-                      tampered_commitment.size(), opening.data, opening.len),
+                      tampered_commitment.size(), opening.data(),
+                      opening.size()),
             -1);
 
-  tampered_commitment.assign(commitment.data, commitment.data + commitment.len);
+  tampered_commitment = commitment;
   tampered_commitment[16] ^= 0x01u;
   EXPECT_EQ(hm_verify(message.data(), 1024, tampered_commitment.data(),
-                      tampered_commitment.size(), opening.data, opening.len),
+                      tampered_commitment.size(), opening.data(),
+                      opening.size()),
             -1);
 
-  tampered_commitment.assign(commitment.data, commitment.data + commitment.len);
+  tampered_commitment = commitment;
   tampered_commitment[tampered_commitment.size() - 1u] ^= 0x01u;
   EXPECT_EQ(hm_verify(message.data(), 1024, tampered_commitment.data(),
-                      tampered_commitment.size(), opening.data, opening.len),
+                      tampered_commitment.size(), opening.data(),
+                      opening.size()),
             -1);
 
-  std::vector<uint8_t> tampered_opening(opening.data,
-                                        opening.data + opening.len);
+  std::vector<uint8_t> tampered_opening = opening;
   tampered_opening[0] ^= 0x01u;
-  EXPECT_EQ(hm_verify(message.data(), 1024, commitment.data, commitment.len,
-                      tampered_opening.data(), tampered_opening.size()),
+  EXPECT_EQ(hm_verify(message.data(), 1024, commitment.data(),
+                      commitment.size(), tampered_opening.data(),
+                      tampered_opening.size()),
             -1);
-
-  hm_buffer_free(&commitment);
-  hm_buffer_free(&opening);
 }
 
 TEST_F(HMCommit, PlainVerifyRejectsWrongMessageBit) {
   std::vector<uint8_t> message = make_message(33);
-  hm_buffer_t commitment = {};
-  hm_buffer_t opening = {};
+  hm_commit_sizes_t sizes = {};
+  ASSERT_EQ(hm_commit_get_sizes(33, &sizes), 0);
+  std::vector<uint8_t> commitment(sizes.commitment_len);
+  std::vector<uint8_t> opening(sizes.opening_len);
 
-  ASSERT_EQ(hm_commit(message.data(), 33, &commitment, &opening), 0);
+  ASSERT_EQ(hm_commit(message.data(), 33, commitment.data(), commitment.size(),
+                      opening.data(), opening.size()),
+            0);
 
   std::vector<uint8_t> wrong_message = message;
   wrong_message[2] ^= 0x04u;
-  EXPECT_EQ(hm_verify(wrong_message.data(), 33, commitment.data, commitment.len,
-                      opening.data, opening.len),
+  EXPECT_EQ(hm_verify(wrong_message.data(), 33, commitment.data(),
+                      commitment.size(), opening.data(), opening.size()),
             -1);
+}
 
-  hm_buffer_free(&commitment);
-  hm_buffer_free(&opening);
+TEST_F(HMCommit, PlainCommitRejectsInvalidSizesBeforeWriting) {
+  hm_commit_sizes_t sizes = {};
+  ASSERT_EQ(hm_commit_get_sizes(33, &sizes), 0);
+  EXPECT_EQ(hm_commit_get_sizes(0, &sizes), -1);
+  EXPECT_EQ(sizes.commitment_len, 0u);
+  EXPECT_EQ(sizes.opening_len, 0u);
+  EXPECT_EQ(hm_commit_get_sizes(33, nullptr), -1);
+  EXPECT_EQ(hm_commit_get_sizes(SIZE_MAX, &sizes), -1);
+
+  ASSERT_EQ(hm_commit_get_sizes(33, &sizes), 0);
+  std::vector<uint8_t> message = make_message(33);
+  std::vector<uint8_t> commitment(sizes.commitment_len + 2u, 0xa5u);
+  std::vector<uint8_t> opening(sizes.opening_len + 2u, 0x5au);
+
+  EXPECT_EQ(hm_commit(message.data(), 33, commitment.data() + 1u,
+                      sizes.commitment_len - 1u, opening.data() + 1u,
+                      sizes.opening_len),
+            -1);
+  EXPECT_TRUE(std::all_of(commitment.begin(), commitment.end(),
+                          [](uint8_t v) { return v == 0xa5u; }));
+  EXPECT_TRUE(std::all_of(opening.begin(), opening.end(),
+                          [](uint8_t v) { return v == 0x5au; }));
+
+  EXPECT_EQ(hm_commit(message.data(), 33, commitment.data() + 1u,
+                      sizes.commitment_len, opening.data() + 1u,
+                      sizes.opening_len - 1u),
+            -1);
+  EXPECT_TRUE(std::all_of(commitment.begin(), commitment.end(),
+                          [](uint8_t v) { return v == 0xa5u; }));
+  EXPECT_TRUE(std::all_of(opening.begin(), opening.end(),
+                          [](uint8_t v) { return v == 0x5au; }));
+
+  ASSERT_EQ(hm_commit(message.data(), 33, commitment.data() + 1u,
+                      sizes.commitment_len, opening.data() + 1u,
+                      sizes.opening_len),
+            0);
+  EXPECT_EQ(commitment.front(), 0xa5u);
+  EXPECT_EQ(commitment.back(), 0xa5u);
+  EXPECT_EQ(opening.front(), 0x5au);
+  EXPECT_EQ(opening.back(), 0x5au);
+}
+
+TEST_F(HMCommit, PlainCommitSupportsContiguousBatchBuffers) {
+  constexpr size_t bit_len = 33;
+  constexpr size_t count = 64;
+
+  hm_commit_sizes_t sizes = {};
+  ASSERT_EQ(hm_commit_get_sizes(bit_len, &sizes), 0);
+  std::vector<uint8_t> messages(count * ceil_bits_to_bytes(bit_len));
+  ASSERT_EQ(RAND_bytes(messages.data(), messages.size()), 1);
+
+  //allocate enough size for batch commitments and openings
+  std::vector<uint8_t> commitments(count * sizes.commitment_len);
+  std::vector<uint8_t> openings(count * sizes.opening_len);
+
+  for (size_t i = 0; i < count; i++) {
+    const uint8_t *message = messages.data() + i * ceil_bits_to_bytes(bit_len);
+    uint8_t *commitment = commitments.data() + i * sizes.commitment_len;
+    uint8_t *opening = openings.data() + i * sizes.opening_len;
+    ASSERT_EQ(hm_commit(message, bit_len, commitment, sizes.commitment_len,
+                        opening, sizes.opening_len),
+              0)
+        << "i=" << i;
+  }
+
+  for (size_t i = 0; i < count; i++) {
+    const uint8_t *message = messages.data() + i * ceil_bits_to_bytes(bit_len);
+    const uint8_t *commitment = commitments.data() + i * sizes.commitment_len;
+    const uint8_t *opening = openings.data() + i * sizes.opening_len;
+    EXPECT_EQ(hm_verify(message, bit_len, commitment, sizes.commitment_len,
+                        opening, sizes.opening_len),
+              0)
+        << "i=" << i;
+  }
 }
 
 TEST(MPCUniversalHashTest, InnerProductUsesWordBackedShares) {

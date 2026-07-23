@@ -4,55 +4,34 @@
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
-
-class HmBuffer {
-public:
-  HmBuffer() = default;
-  HmBuffer(const HmBuffer &) = delete;
-  HmBuffer &operator=(const HmBuffer &) = delete;
-
-  HmBuffer(HmBuffer &&other) noexcept : buf_(other.buf_) { other.buf_ = {}; }
-
-  HmBuffer &operator=(HmBuffer &&other) noexcept {
-    if (this != &other) {
-      hm_buffer_free(&buf_);
-      buf_ = other.buf_;
-      other.buf_ = {};
-    }
-    return *this;
-  }
-
-  ~HmBuffer() { hm_buffer_free(&buf_); }
-
-  hm_buffer_t *out() { return &buf_; }
-
-  const uint8_t *data() const { return buf_.data; }
-
-  std::size_t size() const { return buf_.len; }
-
-private:
-  hm_buffer_t buf_{};
-};
+#include <vector>
 
 int main() {
   // commit to msg 0b11 (little-endian)
   const uint8_t msg = 0x03;
-  const ssize_t msg_bit_len = 2;
+  const std::size_t msg_bit_len = 2;
 
-  HmBuffer commitment;
-  HmBuffer opening;
+  hm_commit_sizes_t sizes{};
+  if (hm_commit_get_sizes(msg_bit_len, &sizes) != 0) {
+    std::cerr << "hm_commit_get_sizes failed\n";
+    return 1;
+  }
 
-  if (hm_commit(&msg, msg_bit_len, commitment.out(), opening.out()) != 0) {
+  std::vector<uint8_t> commitment(sizes.commitment_len);
+  std::vector<uint8_t> opening(sizes.opening_len);
+
+  if (hm_commit(&msg, msg_bit_len, commitment.data(), commitment.size(),
+                opening.data(), opening.size()) != 0) {
     std::cerr << "hm_commit failed\n";
     return 1;
   }
 
   std::cout << "Committed to msg " << std::bitset<2>(msg) << '\n';
-  std::cout << "commitment: " << commitment.size() << " bytes\n";
-  std::cout << "opening: " << opening.size() << " bytes\n";
+  std::cout << "commitment: " << sizes.commitment_len << " bytes\n";
+  std::cout << "opening: " << sizes.opening_len << " bytes\n";
 
-  if (hm_verify(&msg, msg_bit_len, commitment.data(), commitment.size(),
-                opening.data(), opening.size()) != 0) {
+  if (hm_verify(&msg, msg_bit_len, commitment.data(), sizes.commitment_len,
+                opening.data(), sizes.opening_len) != 0) {
     std::cerr << "hm_verify failed\n";
     return 1;
   }
