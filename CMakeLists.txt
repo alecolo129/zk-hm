@@ -17,6 +17,7 @@ option(VERBOSE "Print debug messages" ON)
 option(ENABLE_SANITIZERS "Enable ASan/UBSan" OFF)
 option(HM_MPC_BUILD_TESTS "Build tests" OFF)
 option(HM_MPC_BUILD_EXAMPLES "Build example programs" OFF)
+option(HM_MPC_BUILD_BENCHMARKS "Build benchmark programs" OFF)
 
 if(ENABLE_SANITIZERS)
   add_library(sanitizers INTERFACE)
@@ -106,4 +107,19 @@ endif()
 
 if(HM_MPC_BUILD_EXAMPLES)
   add_subdirectory(examples)
+endif()
+
+if(HM_MPC_BUILD_BENCHMARKS)
+  include(FetchContent)
+
+  set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+  set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(
+    googlebenchmark
+    GIT_REPOSITORY https://github.com/google/benchmark.git
+    GIT_TAG v1.9.5
+  )
+  FetchContent_MakeAvailable(googlebenchmark)
+
+  add_subdirectory(benchmarks)
 endif()

@@ -68,3 +68,37 @@ C and C++ examples are available in `examples/` and are disabled by default:
 ./build/examples/hm_bit_commit_c
 ./build/examples/hm_bit_commit_cpp
 ```
+
+## Benchmarks
+
+Plain Halevi-Micali commitment benchmarks are disabled by default. Build and
+run them with:
+
+```bash
+./build.sh -b
+./build/benchmarks/hm_plain_benchmark
+```
+
+The scalar benchmarks measure `hm_commit()` and `hm_verify()` separately for
+power-of-two message lengths from 1 through 1024 bits. Random messages and
+caller-owned buffers are prepared outside the timed loop.
+
+`BM_PlainCommitBatch` measures batches of 1,000, 100,000, and 1,000,000
+two-bit commitments. Its counters report:
+
+- `allocation_ms`: time spent constructing the commitment and opening buffers;
+- `commitment_ms`: time spent generating the commitments;
+- `total_ms`: allocation plus commitment generation.
+
+Random message generation, size calculation, correctness checks, and
+vector destruction are excluded from these reported durations.
+
+For five repetitions with aggregate JSON output:
+
+```bash
+./build/benchmarks/hm_plain_benchmark \
+  --benchmark_repetitions=5 \
+  --benchmark_report_aggregates_only=true \
+  --benchmark_out=hm_plain_benchmark.json \
+  --benchmark_out_format=json
+```
