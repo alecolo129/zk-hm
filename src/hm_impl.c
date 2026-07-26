@@ -37,6 +37,8 @@ typedef struct {
   size_t message_byte_len;
   size_t opening_len;
   size_t l_words;
+  size_t a_bit_len;
+  size_t a_byte_len;
   size_t a_words;
   size_t commitment_len;
 } HmCommitLayout;
@@ -58,12 +60,20 @@ static int compute_sizes(size_t message_bit_len, HmCommitLayout *layout) {
   size_t l_bits = layout->opening_len * 8u;
   layout->l_words = ceil_div_size(l_bits, 32u);
 
+  layout->a_bit_len = l_bits + message_bit_len - 1u;
+  layout->a_byte_len = ceil_div_size(layout->a_bit_len, 8u);
+
   size_t max_base_word = (message_bit_len - 1u) / 32u;
   layout->a_words = max_base_word + layout->l_words + 1u;
 
   layout->commitment_len =
-      16u + layout->message_byte_len + SHA256_DIGEST_LENGTH;
+      layout->a_byte_len + layout->message_byte_len + SHA256_DIGEST_LENGTH;
   return 0;
+}
+
+static inline uint8_t last_byte_mask(size_t bit_len) {
+  size_t used_bits = bit_len % 8u;
+  return used_bits == 0u ? UINT8_MAX : (uint8_t)((1u << used_bits) - 1u);
 }
 
 int hm_commit_get_sizes(size_t message_bit_len, hm_commit_sizes_t *sizes_out) {
@@ -110,20 +120,20 @@ int hm_commit(const uint8_t *message, size_t message_bit_len,
     goto fail;
   }
 
-  uint8_t *keyA = commitment;
-  uint8_t *b = commitment + 16u;
-  uint8_t *digest = commitment + 16u + layout.message_byte_len;
+  uint8_t *a_description = commitment;
+  uint8_t *b = commitment + layout.a_byte_len;
+  uint8_t *digest = commitment + layout.a_byte_len + layout.message_byte_len;
 
-  // TODO: should we directly pick the matrix instead?
-  // pick UH key and r vector
-  if (RAND_bytes(keyA, 16u) != 1 ||
+  // Sample the complete Toeplitz description and opening independently.
+  if (RAND_bytes(a_description, (int)layout.a_byte_len) != 1 ||
       RAND_bytes(opening, layout.opening_len) != 1) {
     LOG_ERRF("RAND_bytes failure\n");
     goto fail;
   }
+  a_description[layout.a_byte_len - 1u] &= last_byte_mask(layout.a_bit_len);
 
-  // generate H from key
-  expand_A(A, layout.a_words, keyA);
+  universal_hash_load_words(A, a_description, layout.a_byte_len,
+                            layout.a_words);
   universal_hash_load_words(r_words, opening, layout.opening_len,
                             layout.l_words);
   universal_hash_compute_b(b, A, r_words, layout.l_words, message,
@@ -158,9 +168,15 @@ int hm_verify(const uint8_t *message, size_t message_bit_len,
     return -1;
   }
 
-  const uint8_t *keyA = commitment;
-  const uint8_t *b = commitment + 16u;
-  const uint8_t *digest = commitment + 16u + layout.message_byte_len;
+  const uint8_t *a_description = commitment;
+  const uint8_t *b = commitment + layout.a_byte_len;
+  const uint8_t *digest = b + layout.message_byte_len;
+
+  uint8_t padding_mask = (uint8_t)~last_byte_mask(layout.a_bit_len);
+  if ((a_description[layout.a_byte_len - 1u] & padding_mask) != 0u) {
+    LOG_ERRF("non-canonical matrix description\n");
+    return -1;
+  }
 
   // verify hash of r
   uint8_t digest_rec[SHA256_DIGEST_LENGTH];
@@ -179,8 +195,8 @@ int hm_verify(const uint8_t *message, size_t message_bit_len,
     return -1;
   }
 
-  // verify universal hash
-  expand_A(A, layout.a_words, keyA);
+  universal_hash_load_words(A, a_description, layout.a_byte_len,
+                            layout.a_words);
   universal_hash_load_words(r_words, opening, opening_len, layout.l_words);
   int ret = universal_hash_verify_message(message, message_bit_len, b, A,
                                           r_words, layout.l_words);

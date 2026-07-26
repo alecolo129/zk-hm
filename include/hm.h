@@ -8,6 +8,9 @@ extern "C" {
 
 /**
  * Required output sizes for a plain Halevi-Micali commitment.
+ *
+ * A plain commitment contains the complete uniformly sampled Toeplitz matrix
+ * description, and the SHA-256 digest of the opening.
  */
 typedef struct hm_commit_sizes_t {
   size_t commitment_len;

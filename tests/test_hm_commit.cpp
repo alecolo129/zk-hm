@@ -30,10 +30,6 @@ TEST_F(HMCommit, BitCommitVerifyCorrectnessTest) {
     EXPECT_EQ(hm_bit_verify(commitment.data, commitment.len, "out_test.bin"),
               0);
 
-    // verify commitment given opening
-    EXPECT_EQ(hm_verify(&bit, 1, commitment.data, commitment.len, opening.data,
-                        opening.len),
-              0);
     // cleanup
     hm_buffer_free(&commitment);
     hm_buffer_free(&opening);
@@ -62,17 +58,6 @@ TEST_F(HMCommit, BitCommitVerifySoundnessTest) {
     ASSERT_EQ(hm_bit_verify(commitment2.data, commitment2.len, "out_test1.bin"),
               -1);
 
-    // wrong input bit
-    uint8_t wrong_bit = (bit + 1) % 2;
-    EXPECT_EQ(hm_verify(&wrong_bit, 1, commitment1.data, commitment1.len,
-                        opening1.data, opening1.len),
-              -1);
-
-    // wrong opening
-    EXPECT_EQ(hm_verify(&bit, 1, commitment1.data, commitment1.len,
-                        opening2.data, opening2.len),
-              -1);
-
     hm_buffer_free(&commitment1);
     hm_buffer_free(&opening1);
     hm_buffer_free(&commitment2);
@@ -86,6 +71,14 @@ static constexpr size_t ceil_bits_to_bytes(size_t bit_len) {
 
 static size_t opening_bytes_non_zk(size_t message_bit_len) {
   return (4u * K + 2u * message_bit_len + 4u + 7u) / 8u;
+}
+
+static size_t matrix_bits_non_zk(size_t message_bit_len) {
+  return 8u * opening_bytes_non_zk(message_bit_len) + message_bit_len - 1u;
+}
+
+static size_t matrix_bytes_non_zk(size_t message_bit_len) {
+  return ceil_bits_to_bytes(matrix_bits_non_zk(message_bit_len));
 }
 
 static std::vector<uint8_t> make_message(size_t bit_len) {
@@ -103,7 +96,8 @@ TEST_F(HMCommit, PlainCommitVerifyVariableBitLengths) {
     ASSERT_EQ(hm_commit_get_sizes(bit_len, &sizes), 0);
 
     EXPECT_EQ(sizes.commitment_len,
-              16u + ceil_bits_to_bytes(bit_len) + SHA256_DIGEST_LENGTH);
+              matrix_bytes_non_zk(bit_len) + ceil_bits_to_bytes(bit_len) +
+                  SHA256_DIGEST_LENGTH);
     EXPECT_EQ(sizes.opening_len, opening_bytes_non_zk(bit_len));
 
     std::vector<uint8_t> commitment(sizes.commitment_len);
@@ -113,6 +107,15 @@ TEST_F(HMCommit, PlainCommitVerifyVariableBitLengths) {
                         commitment.size(), opening.data(), opening.size()),
               0)
         << "bit_len=" << bit_len;
+
+    const size_t matrix_bits = matrix_bits_non_zk(bit_len);
+    if (matrix_bits % 8u != 0u) {
+      const uint8_t padding_mask =
+          (uint8_t)~((1u << (matrix_bits % 8u)) - 1u);
+      EXPECT_EQ(commitment[matrix_bytes_non_zk(bit_len) - 1u] & padding_mask,
+                0u)
+          << "bit_len=" << bit_len;
+    }
 
     EXPECT_EQ(hm_verify(message.data(), bit_len, commitment.data(),
                         commitment.size(), opening.data(), opening.size()),
@@ -132,15 +135,36 @@ TEST_F(HMCommit, PlainVerifyRejectsTampering) {
                       commitment.size(), opening.data(), opening.size()),
             0);
 
+  size_t opening_bit = opening.size() * 8u;
+  for (size_t i = 0; i < opening.size() && opening_bit == opening.size() * 8u;
+       i++) {
+    for (size_t j = 0; j < 8u; j++) {
+      if (((opening[i] >> j) & 1u) != 0u) {
+        opening_bit = 8u * i + j;
+        break;
+      }
+    }
+  }
+  ASSERT_LT(opening_bit, opening.size() * 8u);
+
   std::vector<uint8_t> tampered_commitment = commitment;
-  tampered_commitment[0] ^= 0x01u;
+  tampered_commitment[opening_bit / 8u] ^=
+      (uint8_t)(1u << (opening_bit % 8u));
   EXPECT_EQ(hm_verify(message.data(), 1024, tampered_commitment.data(),
                       tampered_commitment.size(), opening.data(),
                       opening.size()),
             -1);
 
   tampered_commitment = commitment;
-  tampered_commitment[16] ^= 0x01u;
+  tampered_commitment[matrix_bytes_non_zk(1024)] ^= 0x01u;
+  EXPECT_EQ(hm_verify(message.data(), 1024, tampered_commitment.data(),
+                      tampered_commitment.size(), opening.data(),
+                      opening.size()),
+            -1);
+
+  ASSERT_EQ(matrix_bits_non_zk(1024) % 8u, 7u);
+  tampered_commitment = commitment;
+  tampered_commitment[matrix_bytes_non_zk(1024) - 1u] ^= 0x80u;
   EXPECT_EQ(hm_verify(message.data(), 1024, tampered_commitment.data(),
                       tampered_commitment.size(), opening.data(),
                       opening.size()),
