@@ -21,15 +21,23 @@ int main() {
     return 1;
   }
 
+  std::vector<uint8_t> toeplitz_matrix(sizes.toeplitz_matrix_len);
   std::vector<uint8_t> commitments(commitment_count * sizes.commitment_len);
   std::vector<uint8_t> openings(commitment_count * sizes.opening_len);
+
+  if (hm_pick_universal_hash(message_bit_len, toeplitz_matrix.data(),
+                             toeplitz_matrix.size()) != 0) {
+    std::cerr << "hm_pick_universal_hash failed\n";
+    return 1;
+  }
 
   for (std::size_t i = 0; i < commitment_count; ++i) {
     uint8_t *commitment = commitments.data() + i * sizes.commitment_len;
     uint8_t *opening = openings.data() + i * sizes.opening_len;
 
-    if (hm_commit(&messages[i], message_bit_len, commitment,
-                  sizes.commitment_len, opening, sizes.opening_len) != 0) {
+    if (hm_commit(toeplitz_matrix.data(), toeplitz_matrix.size(), &messages[i],
+                  message_bit_len, commitment, sizes.commitment_len, opening,
+                  sizes.opening_len) != 0) {
       std::cerr << "hm_commit failed at index " << i << '\n';
       return 1;
     }
@@ -39,8 +47,9 @@ int main() {
     const uint8_t *commitment = commitments.data() + i * sizes.commitment_len;
     const uint8_t *opening = openings.data() + i * sizes.opening_len;
 
-    if (hm_verify(&messages[i], message_bit_len, commitment,
-                  sizes.commitment_len, opening, sizes.opening_len) != 0) {
+    if (hm_verify(toeplitz_matrix.data(), toeplitz_matrix.size(), &messages[i],
+                  message_bit_len, commitment, sizes.commitment_len, opening,
+                  sizes.opening_len) != 0) {
       std::cerr << "hm_verify failed at index " << i << '\n';
       return 1;
     }

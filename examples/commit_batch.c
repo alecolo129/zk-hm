@@ -10,6 +10,7 @@ int main(void) {
   const size_t message_bit_len = 2;
   uint8_t messages[COMMITMENT_COUNT];
   hm_commit_sizes_t sizes = {0};
+  uint8_t *toeplitz_matrix = NULL;
   uint8_t *commitments = NULL;
   uint8_t *openings = NULL;
   int ret = 1;
@@ -25,10 +26,19 @@ int main(void) {
 
   const size_t commitments_len = COMMITMENT_COUNT * sizes.commitment_len;
   const size_t openings_len = COMMITMENT_COUNT * sizes.opening_len;
+  const size_t toeplitz_matrix_len = sizes.toeplitz_matrix_len;
+
+  toeplitz_matrix = malloc(toeplitz_matrix_len);
   commitments = malloc(commitments_len);
   openings = malloc(openings_len);
-  if (!commitments || !openings) {
+  if (!commitments || !openings || !toeplitz_matrix) {
     fprintf(stderr, "allocation failed\n");
+    goto cleanup;
+  }
+
+  if (hm_pick_universal_hash(message_bit_len, toeplitz_matrix,
+                             toeplitz_matrix_len) != 0) {
+    printf("hm_pick_universal_hash failed\n");
     goto cleanup;
   }
 
@@ -36,8 +46,9 @@ int main(void) {
     uint8_t *commitment = commitments + i * sizes.commitment_len;
     uint8_t *opening = openings + i * sizes.opening_len;
 
-    if (hm_commit(&messages[i], message_bit_len, commitment,
-                  sizes.commitment_len, opening, sizes.opening_len) != 0) {
+    if (hm_commit(toeplitz_matrix, toeplitz_matrix_len, &messages[i],
+                  message_bit_len, commitment, sizes.commitment_len, opening,
+                  sizes.opening_len) != 0) {
       fprintf(stderr, "hm_commit failed at index %zu\n", i);
       goto cleanup;
     }
@@ -47,8 +58,9 @@ int main(void) {
     const uint8_t *commitment = commitments + i * sizes.commitment_len;
     const uint8_t *opening = openings + i * sizes.opening_len;
 
-    if (hm_verify(&messages[i], message_bit_len, commitment,
-                  sizes.commitment_len, opening, sizes.opening_len) != 0) {
+    if (hm_verify(toeplitz_matrix, toeplitz_matrix_len, &messages[i],
+                  message_bit_len, commitment, sizes.commitment_len, opening,
+                  sizes.opening_len) != 0) {
       fprintf(stderr, "hm_verify failed at index %zu\n", i);
       goto cleanup;
     }
