@@ -10,10 +10,8 @@ extern "C" {
  * Required output sizes for a plain Halevi-Micali commitment, opening,
  * and Toeplitz matrix description.
  *
- * An HM commitment contains the complete uniformly sampled Toeplitz matrix
- * description, and the SHA-256 digest of the opening.
- * When committing to batches of equally-sized a single Toeplitz matrix can be
- * used, therefore its size is separately provided.
+ * The matrix is provided separately and can be shared by a batch of
+ * equally-sized messages.
  */
 typedef struct hm_commit_sizes_t {
   size_t commitment_len;
@@ -25,7 +23,8 @@ typedef struct hm_commit_sizes_t {
  * Compute the output sizes required to commit to a bit string.
  *
  * @param[in] message_bit_len     The number of message bits to commit
- * @param[out] sizes_out          The required commitment and opening sizes
+ * @param[out] sizes_out          The required commitment, opening, and matrix
+ * sizes
  *
  * @return Returns 0 if the sizes were computed successfully, or a non-zero
  * value if the input is invalid or the message length exceeds the maximum
@@ -34,68 +33,94 @@ typedef struct hm_commit_sizes_t {
 int hm_commit_get_sizes(size_t message_bit_len, hm_commit_sizes_t *sizes_out);
 
 /**
- * Picks the Toeplitz matrix used to consturct the Halevi-Micali commitment's
- * Universal Hash Function.
+ * Reusable context holding the shared Toeplitz matrix and temporary storage.
  *
- * hm_commit finalizes the universal Hash function by applying the
- * correction vector (opening-dependent).
- *
- * @param[in]  message_bit_len          The number of message bits to commit
- * @param[out] toeplitz_matrix_out      The Toeplitz matrix used in the
- * halevi-micali commitment
- * @param[in] toeplitz_matrix_capacity  The vailable bytes in Topelitz matrix
- * buffer
- *
- * @return Returns 0 if the matrix was computed correctly, or a non-zero
- * value indicating failures.
+ * Release contexts with hm_context_free(). A context must not be used by
+ * multiple callers concurrently.
  */
-int hm_pick_universal_hash(const size_t message_bit_len,
-                           uint8_t *toeplitz_matrix_out,
-                           const size_t toeplitz_matrix_capacity);
+typedef struct hm_context_t hm_context_t;
 
 /**
- * Commit to an arbitrary-length bit string using caller-owned output buffers.
+ * Create a context with a randomly sampled Toeplitz matrix.
  *
- * @param[in] toeplitz_matrix       The Toeplitz matrix used in the
- * halevi-micali commitment
- * @param[in] toeplitz_matrix_len   The number of bytes in the Toeplitz matrix
- * @param[in] message               The message bits. Bits are read LSB-first
- * @param[in] message_bit_len       The number of message bits to commit
- * @param[out] commitment           The buffer receiving the commitment
- * @param[in] commitment_capacity   The vailable bytes in commitment buffer
- * @param[out] opening              The buffer receiving the opening
- * @param[in] opening_capacity      The available bytes in opening buffer
+ * @param[in] message_bit_len     The number of message bits to commit
+ * @param[out] ctx_out            The context allocated by the library
  *
- * @return Returns 0 if the commitment was computed successfully, nonzero value
- * indicates failure. On success, exactly the sizes returned by
+ * @return Returns 0 if the context was created successfully, or a non-zero
+ * value indicating failure.
+ */
+int hm_context_create(size_t message_bit_len, hm_context_t **ctx_out);
+
+/**
+ * Create a context from an existing Toeplitz matrix. The matrix is copied.
+ *
+ * @param[in] message_bit_len     The number of message bits to commit
+ * @param[in] matrix              The exported Toeplitz matrix description
+ * @param[in] matrix_len          The matrix description length, in bytes
+ * @param[out] ctx_out            The context allocated by the library
+ *
+ * @return Returns 0 if the context was created successfully, or a non-zero
+ * value indicating failure.
+ */
+int hm_context_from_matrix(size_t message_bit_len, const uint8_t *matrix,
+                           size_t matrix_len, hm_context_t **ctx_out);
+
+/**
+ * Export the context's Toeplitz matrix to a caller-owned buffer.
+ *
+ * @param[in] ctx                 The Halevi-Micali context
+ * @param[out] matrix_out         The buffer receiving the matrix description
+ * @param[in] matrix_capacity     The available bytes in the output buffer
+ *
+ * @return Returns 0 if the matrix was exported successfully, or a non-zero
+ * value indicating failure. The required buffer size is returned by
+ * hm_commit_get_sizes().
+ */
+int hm_context_export_matrix(const hm_context_t *ctx, uint8_t *matrix_out,
+                             size_t matrix_capacity);
+
+/**
+ * Free a context allocated by the library.
+ *
+ * @param[in] ctx                 The context to release. May be NULL.
+ */
+void hm_context_free(hm_context_t *ctx);
+
+/**
+ * Commit to a bit string of the length configured in the context, using
+ * caller-owned output buffers. Each call samples a fresh opening.
+ *
+ * @param[in,out] ctx             The Halevi-Micali context
+ * @param[in] message             The message bits. Bits are read LSB-first
+ * @param[out] commitment         The buffer receiving the commitment
+ * @param[in] commitment_capacity The available bytes in the commitment buffer
+ * @param[out] opening            The buffer receiving the opening
+ * @param[in] opening_capacity    The available bytes in the opening buffer
+ *
+ * @return Returns 0 if the commitment was computed successfully, or a non-zero
+ * value indicating failure. On success, exactly the sizes returned by
  * hm_commit_get_sizes() are written. The library never frees the supplied
  * buffers. The message, commitment, and opening memory regions must not
  * overlap.
  */
-int hm_commit(const uint8_t *toeplitz_matrix, const size_t toeplitz_matrix_len,
-              const uint8_t *message, size_t message_bit_len,
-              uint8_t *commitment, size_t commitment_capacity, uint8_t *opening,
+int hm_commit(hm_context_t *ctx, const uint8_t *message, uint8_t *commitment,
+              size_t commitment_capacity, uint8_t *opening,
               size_t opening_capacity);
 
 /**
- * Verifies the commitment against the input bit string and opening.
+ * Verify the commitment against the input bit string and opening.
  *
- * @param[in] toeplitz_matrix       The Toeplitz matrix used in the
- * halevi-micali commitment
- * @param[in] toeplitz_matrix_len   The number of bytes in the Toeplitz matrix
+ * @param[in,out] ctx             The Halevi-Micali context
  * @param[in] message             The message bits. Bits are read LSB-first
- * @param[in] message_bit_len     The number of message bits to verify
  * @param[in] commitment          The Halevi-Micali commitment
- * @param[in] commitment_len      The length of Halevi-Micali commitment, in
- * bytes
+ * @param[in] commitment_len      The commitment length, in bytes
  * @param[in] opening             The Halevi-Micali opening
- * @param[in] opening_len         The length of Halevi-Micali opening, in bytes
+ * @param[in] opening_len         The opening length, in bytes
  *
  * @return Returns 0 if the message was successfully verified, or a non-zero
  * value indicating an error or failed verification.
  */
-int hm_verify(const uint8_t *toeplitz_matrix, const size_t toeplitz_matrix_len,
-              const uint8_t *message, size_t message_bit_len,
+int hm_verify(hm_context_t *ctx, const uint8_t *message,
               const uint8_t *commitment, size_t commitment_len,
               const uint8_t *opening, size_t opening_len);
 

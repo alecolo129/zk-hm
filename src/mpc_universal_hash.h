@@ -31,9 +31,8 @@ void generate_H(uint32_t A[A_WORDS], uint8_t b[MSG_BYTES],
                 const uint8_t keyH[16], const uint8_t m[MSG_BYTES],
                 const RVec *r);
 
-void universal_hash_load_words(uint32_t *dst_words, const uint8_t *src,
-                               size_t src_len, size_t word_len);
-
+/* Plain HM helpers: A contains padded LSB-first Toeplitz diagonal words;
+ * r_words contains exactly L opening bits with zero word padding. */
 void universal_hash_compute_b(uint8_t *b, const uint32_t *A,
                               const uint32_t *r_words, size_t l_words,
                               const uint8_t *message,

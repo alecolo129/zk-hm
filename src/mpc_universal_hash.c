@@ -16,25 +16,8 @@ static inline uint32_t load_window32(const uint32_t *A, size_t idx,
   return (uint32_t)(lane >> rShift);
 }
 
-static inline uint32_t load_u32_le_partial(const uint8_t *src, size_t src_len,
-                                           size_t word_idx) {
-  size_t off = word_idx * 4u;
-  uint32_t word = 0;
-  for (size_t i = 0; i < 4u && off + i < src_len; i++) {
-    word |= ((uint32_t)src[off + i]) << (8u * i);
-  }
-  return word;
-}
-
 static inline uint32_t mask_l_word(uint32_t word, int idx) {
   return (idx == L_WORDS - 1) ? (word & L_LAST_WORD_MASK) : word;
-}
-
-void universal_hash_load_words(uint32_t *dst_words, const uint8_t *src,
-                               size_t src_len, size_t word_len) {
-  for (size_t i = 0; i < word_len; i++) {
-    dst_words[i] = load_u32_le_partial(src, src_len, i);
-  }
 }
 
 void expand_A(uint32_t *A, size_t a_words, const uint8_t keyA[16]) {
@@ -59,40 +42,43 @@ void expand_A(uint32_t *A, size_t a_words, const uint8_t keyA[16]) {
 
 void universal_hash_compute_b(uint8_t *b, const uint32_t *A,
                               const uint32_t *r_words, size_t l_words,
-                              const uint8_t *message,
-                              size_t message_bit_len) {
+                              const uint8_t *message, size_t message_bit_len) {
   size_t message_byte_len = (message_bit_len + 7u) / 8u;
   memset(b, 0, message_byte_len);
 
   for (size_t i = 0; i < message_bit_len; i++) {
-    size_t rShift = i % 32u;
-    size_t base = i / 32u;
+    // A[i,j] = d[n - 1 - i + j]: each diagonal is constant.
+    size_t row_start = message_bit_len - 1u - i;
+    size_t rShift = row_start % 32u;
+    size_t base = row_start / 32u;
     uint32_t acc = 0;
 
     for (size_t j = 0; j < l_words; j++) {
       acc ^= load_window32(A, base + j, rShift) & r_words[j];
     }
 
-    uint8_t bit = (uint8_t)(__builtin_parity(acc) ^ GETBIT(message[i/8], i%8));
-    SETBIT(b[i/8], i%8, bit);
+    uint8_t bit =
+        (uint8_t)(__builtin_parity(acc) ^ GETBIT(message[i / 8], i % 8));
+    SETBIT(b[i / 8], i % 8, bit);
   }
 }
 
 int universal_hash_verify_message(const uint8_t *message,
                                   size_t message_bit_len, const uint8_t *b,
-                                  const uint32_t *A,
-                                  const uint32_t *r_words, size_t l_words) {
+                                  const uint32_t *A, const uint32_t *r_words,
+                                  size_t l_words) {
   for (size_t i = 0; i < message_bit_len; i++) {
-    size_t wordIdx = i % 32u;
-    size_t bitIdx = i / 32u;
+    size_t row_start = message_bit_len - 1u - i;
+    size_t rShift = row_start % 32u;
+    size_t base = row_start / 32u;
     uint32_t acc = 0;
 
     for (size_t j = 0; j < l_words; j++) {
-      acc ^= load_window32(A, bitIdx + j, wordIdx) & r_words[j];
+      acc ^= load_window32(A, base + j, rShift) & r_words[j];
     }
 
-    uint8_t rec = (uint8_t)(__builtin_parity(acc) ^ GETBIT(b[i/8], i%8));
-    if (rec != GETBIT(message[i/8], i%8)) {
+    uint8_t rec = (uint8_t)(__builtin_parity(acc) ^ GETBIT(b[i / 8], i % 8));
+    if (rec != GETBIT(message[i / 8], i % 8)) {
       return -1;
     }
   }
