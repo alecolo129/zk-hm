@@ -13,9 +13,10 @@ build_benchmarks=0
 helpFunction()
 {
   echo ""
-  echo "Usage: $0 [-b] [-c] [-s] [-t] [-e] [-h]"
+  echo "Usage: $0 [-b] [-c] [-v] [-s] [-t] [-e] [-h]"
   echo -e "\t-b If present, build benchmarks."
   echo -e "\t-c If present, starts the building phase from a clean state."
+  echo -e "\t-v If present, enables verbose mode."
   echo -e "\t-s If present, instrument build with address sanitizer."
   echo -e "\t-t If present, build tests."
   echo -e "\t-e If present, build examples."
@@ -23,13 +24,15 @@ helpFunction()
   exit 1
 }
 
-while getopts "bchste" opt
+while getopts "bcvhste" opt
 do
    case "$opt" in
       b )
         build_benchmarks=1 ;;
       c )
         clean=1       ;;
+      v )
+        verbose=1      ;;
       s )
         sanitize=1     ;;
       t )
@@ -54,6 +57,7 @@ sanitize_opt=OFF
 build_tests_opt=OFF
 build_examples_opt=OFF
 build_benchmarks_opt=OFF
+build_verbose_opt=OFF
 build_type=Release
 
 if [[ "$sanitize" -eq 1 ]]; then
@@ -73,11 +77,16 @@ if [[ "$build_benchmarks" -eq 1 ]]; then
   build_benchmarks_opt=ON
 fi
 
+if [[ "$verbose" -eq 1 ]]; then
+  build_verbose_opt=ON
+fi
+
+
 cmake_args=(
   -S .
   -B build
   -DCMAKE_BUILD_TYPE="$build_type"
-  -DVERBOSE=OFF
+  -DVERBOSE="$build_verbose_opt"
   -DENABLE_SANITIZERS="$sanitize_opt"
   -DHM_MPC_BUILD_TESTS="$build_tests_opt"
   -DHM_MPC_BUILD_EXAMPLES="$build_examples_opt"
