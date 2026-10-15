@@ -37,9 +37,9 @@ typedef struct {
   size_t message_byte_len;
   size_t opening_len;
   size_t l_words;
-  size_t a_bit_len;
-  size_t a_byte_len;
-  size_t a_words;
+  size_t toeplitz_matrix_bit_len;
+  size_t toeplitz_matrix_len;
+  size_t toeplitz_matrix_words;
   size_t commitment_len;
 } HmCommitLayout;
 
@@ -60,14 +60,13 @@ static int compute_sizes(size_t message_bit_len, HmCommitLayout *layout) {
   size_t l_bits = layout->opening_len * 8u;
   layout->l_words = ceil_div_size(l_bits, 32u);
 
-  layout->a_bit_len = l_bits + message_bit_len - 1u;
-  layout->a_byte_len = ceil_div_size(layout->a_bit_len, 8u);
+  layout->toeplitz_matrix_bit_len = l_bits + message_bit_len - 1u;
+  layout->toeplitz_matrix_len = ceil_div_size(layout->toeplitz_matrix_bit_len, 8u);
 
   size_t max_base_word = (message_bit_len - 1u) / 32u;
-  layout->a_words = max_base_word + layout->l_words + 1u;
+  layout->toeplitz_matrix_words = max_base_word + layout->l_words + 1u;
 
-  layout->commitment_len =
-      layout->a_byte_len + layout->message_byte_len + SHA256_DIGEST_LENGTH;
+  layout->commitment_len = layout->message_byte_len + SHA256_DIGEST_LENGTH;
   return 0;
 }
 
@@ -93,10 +92,32 @@ int hm_commit_get_sizes(size_t message_bit_len, hm_commit_sizes_t *sizes_out) {
 
   sizes_out->commitment_len = layout.commitment_len;
   sizes_out->opening_len = layout.opening_len;
+  sizes_out->toeplitz_matrix_len = layout.toeplitz_matrix_len;
   return 0;
 }
 
-int hm_commit(const uint8_t *message, size_t message_bit_len,
+int hm_pick_universal_hash(const size_t message_bit_len,
+                           uint8_t *toeplitz_matrix_out,
+                           const size_t toeplitz_matrix_capacity) {
+  HmCommitLayout layout;
+  if (compute_sizes(message_bit_len, &layout) != 0 ||
+      layout.toeplitz_matrix_len > toeplitz_matrix_capacity) {
+    LOG_ERRF("invalid input sizes\n");
+    return -1;
+  }
+
+  if (RAND_bytes(toeplitz_matrix_out, (int)layout.toeplitz_matrix_len) != 1) {
+    LOG_ERRF("RAND_bytes failure\n");
+    return -1;
+  }
+
+  toeplitz_matrix_out[layout.toeplitz_matrix_len - 1u] &=
+      last_byte_mask(layout.toeplitz_matrix_bit_len);
+  return 0;
+}
+
+int hm_commit(const uint8_t *toeplitz_matrix, const size_t toeplitz_matrix_len,
+              const uint8_t *message, size_t message_bit_len,
               uint8_t *commitment, size_t commitment_capacity, uint8_t *opening,
               size_t opening_capacity) {
   if (!message || !commitment || !opening) {
@@ -107,33 +128,31 @@ int hm_commit(const uint8_t *message, size_t message_bit_len,
   HmCommitLayout layout;
   if (compute_sizes(message_bit_len, &layout) != 0 ||
       commitment_capacity < layout.commitment_len ||
-      opening_capacity < layout.opening_len) {
+      opening_capacity < layout.opening_len ||
+      toeplitz_matrix_len < layout.toeplitz_matrix_len) {
     LOG_ERRF("invalid input sizes\n");
     return -1;
   }
 
   // Allocate scratch buffers. The commitment and opening are caller-owned.
-  uint32_t *A = malloc(layout.a_words * sizeof(uint32_t));
+  uint32_t *A = malloc(layout.toeplitz_matrix_words * sizeof(uint32_t));
   uint32_t *r_words = malloc(layout.l_words * sizeof(uint32_t));
   if (!A || !r_words) {
     LOG_ERRF("malloc failure\n");
     goto fail;
   }
 
-  uint8_t *a_description = commitment;
-  uint8_t *b = commitment + layout.a_byte_len;
-  uint8_t *digest = commitment + layout.a_byte_len + layout.message_byte_len;
+  uint8_t *b = commitment;
+  uint8_t *digest = commitment + layout.message_byte_len;
 
-  // Sample the complete Toeplitz description and opening independently.
-  if (RAND_bytes(a_description, (int)layout.a_byte_len) != 1 ||
-      RAND_bytes(opening, layout.opening_len) != 1) {
+  // Sample HM opening.
+  if (RAND_bytes(opening, layout.opening_len) != 1) {
     LOG_ERRF("RAND_bytes failure\n");
     goto fail;
   }
-  a_description[layout.a_byte_len - 1u] &= last_byte_mask(layout.a_bit_len);
 
-  universal_hash_load_words(A, a_description, layout.a_byte_len,
-                            layout.a_words);
+  universal_hash_load_words(A, toeplitz_matrix, layout.toeplitz_matrix_len,
+                            layout.toeplitz_matrix_words);
   universal_hash_load_words(r_words, opening, layout.opening_len,
                             layout.l_words);
   universal_hash_compute_b(b, A, r_words, layout.l_words, message,
@@ -152,10 +171,12 @@ fail:
   return -1;
 }
 
-int hm_verify(const uint8_t *message, size_t message_bit_len,
+int hm_verify(const uint8_t *toeplitz_matrix, const size_t toeplitz_matrix_len,
+              const uint8_t *message, size_t message_bit_len,
               const uint8_t *commitment, size_t commitment_len,
               const uint8_t *opening, size_t opening_len) {
-  if (!message || !commitment || !opening || message_bit_len == 0) {
+  if (!message || !commitment || !opening || !toeplitz_matrix ||
+      message_bit_len == 0) {
     LOG_ERRF("invalid inputs\n");
     return -1;
   }
@@ -163,17 +184,17 @@ int hm_verify(const uint8_t *message, size_t message_bit_len,
   HmCommitLayout layout;
   if (compute_sizes(message_bit_len, &layout) != 0 ||
       commitment_len != layout.commitment_len ||
-      opening_len != layout.opening_len) {
+      opening_len != layout.opening_len ||
+      toeplitz_matrix_len != layout.toeplitz_matrix_len) {
     LOG_ERRF("invalid input sizes\n");
     return -1;
   }
 
-  const uint8_t *a_description = commitment;
-  const uint8_t *b = commitment + layout.a_byte_len;
+  const uint8_t *b = commitment;
   const uint8_t *digest = b + layout.message_byte_len;
 
-  uint8_t padding_mask = (uint8_t)~last_byte_mask(layout.a_bit_len);
-  if ((a_description[layout.a_byte_len - 1u] & padding_mask) != 0u) {
+  uint8_t padding_mask = (uint8_t)~last_byte_mask(layout.toeplitz_matrix_bit_len);
+  if ((toeplitz_matrix[layout.toeplitz_matrix_len - 1u] & padding_mask) != 0u) {
     LOG_ERRF("non-canonical matrix description\n");
     return -1;
   }
@@ -186,7 +207,7 @@ int hm_verify(const uint8_t *message, size_t message_bit_len,
     return -1;
   }
 
-  uint32_t *A = malloc(layout.a_words * sizeof(uint32_t));
+  uint32_t *A = malloc(layout.toeplitz_matrix_words * sizeof(uint32_t));
   uint32_t *r_words = malloc(layout.l_words * sizeof(uint32_t));
   if (!A || !r_words) {
     LOG_ERRF("malloc failure\n");
@@ -195,8 +216,8 @@ int hm_verify(const uint8_t *message, size_t message_bit_len,
     return -1;
   }
 
-  universal_hash_load_words(A, a_description, layout.a_byte_len,
-                            layout.a_words);
+  universal_hash_load_words(A, toeplitz_matrix, layout.toeplitz_matrix_len,
+                            layout.toeplitz_matrix_words);
   universal_hash_load_words(r_words, opening, opening_len, layout.l_words);
   int ret = universal_hash_verify_message(message, message_bit_len, b, A,
                                           r_words, layout.l_words);
