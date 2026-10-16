@@ -1,4 +1,4 @@
-#include "hm.h"
+#include "hm_plain.h"
 
 #include <benchmark/benchmark.h>
 #include <openssl/crypto.h>

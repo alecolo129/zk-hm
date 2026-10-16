@@ -1,6 +1,5 @@
-#include "hm.h"
+#include "hm_plain.h"
 
-#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

@@ -43,6 +43,14 @@ find_package(OpenSSL REQUIRED)
 # Internal implementation target.
 # Tests can link against this target to access internal headers/functions.
 add_library(hm_mpc_internal OBJECT
+  # Plain commitments (no dependency on MPC headers or fixed dimensions).
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/hm_plain.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/universal_hash.c
+  # Public ZK API and its buffer/serialization support.
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/hm_zk.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/hm_zk_io.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/hm_buffer.c
+  # MPC protocol and proof machinery.
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mpc_sha256_prover.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mpc_sha256_verifier.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mpc_arithmetic.c
@@ -50,9 +58,7 @@ add_library(hm_mpc_internal OBJECT
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mpc_halevi_micali.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/random_oracle.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/prg.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/hm_buffer.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/thread_state.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/hm_impl.c
 )
 target_include_directories(hm_mpc_internal
   PUBLIC
@@ -90,6 +96,10 @@ target_link_libraries(hm_mpc
     OpenMP::OpenMP_C
     OpenSSL::Crypto
 )
+
+if(ENABLE_SANITIZERS)
+  target_link_libraries(hm_mpc PUBLIC sanitizers)
+endif()
 
 if(HM_MPC_BUILD_TESTS)
   include(FetchContent)
