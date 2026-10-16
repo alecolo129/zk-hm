@@ -1,4 +1,7 @@
 #pragma once
+/* Fixed-size parameters and transcript types for the MPC subsystem. */
+#include "hm_parameters.h"
+#include "hm_platform.h"
 #include <openssl/conf.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
@@ -7,24 +10,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-
-#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) &&             \
-    __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
-#error "Big-endian machines are currently not supported"
-#endif
-
-#ifdef VERBOSE
-#define LOG_ERRF(fmt, ...)                                                     \
-  do {                                                                         \
-    flockfile(stderr);                                                         \
-    fprintf(stderr, "%s:%d:%s(): " fmt "\n", __FILE_NAME__, __LINE__,          \
-            __func__, ##__VA_ARGS__);                                          \
-    fflush(stderr);                                                            \
-    funlockfile(stderr);                                                       \
-  } while (0)
-#else
-#define LOG_ERRF(fmt, ...)
-#endif
 
 // Security parameters
 
@@ -37,14 +22,8 @@
 #define MSG_WORDS ((MSG_BITS + 31) / 32)
 #define MSG_BYTES ((MSG_BITS + 7) / 8)
 
-/* Bindness security parameter, we have k/2 of collision resistance.
- * Note: For bit commitments, we save 1 SHA block if we accept k=238 (i.e., 119
- * bits of collision resistance).
- */
-#define K 256
-
 /* Required length of the Halevi-Micali random vector 'r' (i.e., the opening). */
-#define L_BITS (4 * K + 2 * MSG_BITS + 4)
+#define L_BITS (4 * HM_BINDING_SECURITY_BITS + 2 * MSG_BITS + 4)
 #define L_BYTES ((L_BITS + 7) / 8)
 #define L_WORDS ((L_BITS + 31) / 32)
 #define L_LAST_BYTE_MASK                                                       \

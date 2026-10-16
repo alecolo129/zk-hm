@@ -1,18 +1,11 @@
-#pragma once
-#include "hm.h"
-#include "shared.h"
-#include <openssl/rand.h>
-#include <stdint.h>
-#include <stdio.h>
+#include "hm_zk_io.h"
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-static inline int read_hm_commitment(const uint8_t *commitment,
-                                     size_t commitment_len, UniversalHash *H,
-                                     uint8_t y[SHA256_DIGEST_LENGTH])
-{
-  if (commitment_len != 16 + sizeof(H->b) + SHA256_DIGEST_LENGTH)
-  {
+int hm_zk_read_commitment(const uint8_t *commitment, size_t commitment_len,
+                          UniversalHash *H, uint8_t y[SHA256_DIGEST_LENGTH]) {
+  if (commitment_len != 16 + sizeof(H->b) + SHA256_DIGEST_LENGTH) {
     LOG_ERRF("Commitment length invalid");
     return -1;
   }
@@ -22,21 +15,16 @@ static inline int read_hm_commitment(const uint8_t *commitment,
   return 0;
 }
 
-static inline int write_hm_commitment(hm_buffer_t *commitment_out,
-                                          const uint8_t keyH[16],
-                                          const UniversalHash *H,
-                                          const RVec *r)
-{
+int hm_zk_write_commitment(hm_buffer_t *commitment_out, const uint8_t keyH[16],
+                           const UniversalHash *H, const RVec *r) {
 
-  if (!keyH || !H || !commitment_out || !r)
-  {
+  if (!keyH || !H || !commitment_out || !r) {
     return -1;
   }
 
   commitment_out->len = 16 + sizeof(H->b) + SHA256_DIGEST_LENGTH;
   commitment_out->data = malloc(commitment_out->len);
-  if (!commitment_out->data)
-  {
+  if (!commitment_out->data) {
     LOG_ERRF("malloc failure");
     return -1;
   }
@@ -49,19 +37,15 @@ static inline int write_hm_commitment(hm_buffer_t *commitment_out,
   return 0;
 }
 
-static inline const uint8_t* y_const_bytes(const hm_buffer_t* commitment){
+const uint8_t *hm_zk_commitment_digest(const hm_buffer_t *commitment) {
   return commitment->data + 16 + MSG_BYTES;
 }
 
-static inline int serialize_zk_proof_at(FILE *f, unsigned char *buf,
-                                        size_t buffSize, int k,
-                                        const ZkBooCommit *a_ptr,
-                                        const ZkBooOpen *z_ptr)
-{
+int hm_zk_write_proof_round(FILE *f, unsigned char *buf, size_t buffSize, int k,
+                            const ZkBooCommit *a_ptr, const ZkBooOpen *z_ptr) {
 
   size_t proofSize = sizeof(ZkBooCommit) + sizeof(ZkBooOpenDisk);
-  if (buffSize < proofSize)
-  {
+  if (buffSize < proofSize) {
     LOG_ERRF("Allocated buffer is %luB, required is %luB\n", buffSize,
              proofSize);
     return -1;
@@ -93,13 +77,10 @@ static inline int serialize_zk_proof_at(FILE *f, unsigned char *buf,
   return (nWrite == (ssize_t)bufIdx) ? 0 : -1;
 }
 
-static inline int read_zk_proof_at(FILE *f, unsigned char *buf, size_t bufSize,
-                                   int k, ZkBooCommit *a_ptr,
-                                   ZkBooOpen *z_ptr)
-{
+int hm_zk_read_proof_round(FILE *f, unsigned char *buf, size_t bufSize, int k,
+                           ZkBooCommit *a_ptr, ZkBooOpen *z_ptr) {
   size_t proofSize = sizeof(ZkBooCommit) + sizeof(ZkBooOpenDisk);
-  if (bufSize < proofSize)
-  {
+  if (bufSize < proofSize) {
     return -1;
   }
 
@@ -107,8 +88,7 @@ static inline int read_zk_proof_at(FILE *f, unsigned char *buf, size_t bufSize,
   int fd = fileno(f);
   off_t off = (off_t)k * proofSize;
   ssize_t nRead = pread(fd, buf, proofSize, off);
-  if (nRead != proofSize)
-  {
+  if (nRead != proofSize) {
     return -1;
   }
 
@@ -127,8 +107,7 @@ static inline int read_zk_proof_at(FILE *f, unsigned char *buf, size_t bufSize,
   bufIdx += sizeof(z_ptr->re1);
 
   // allocate views memory
-  if (!z_ptr->ve || !z_ptr->ve1)
-  {
+  if (!z_ptr->ve || !z_ptr->ve1) {
     return -1;
   }
 

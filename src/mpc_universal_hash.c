@@ -1,26 +1,18 @@
 #include "mpc_universal_hash.h"
-#include "prg.h"
 #include "mpc_arithmetic.h"
+#include "prg.h"
 #include "shared.h"
 #include "stdbool.h"
+#include "toeplitz_internal.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-
-
-static inline uint32_t load_window32(const uint32_t *A, size_t idx,
-                                     size_t rShift) {
-  // Build 64 bits: [A[idx+1] | A[idx]] and shift right by rShift
-  // Works for rShift == 0..31 safely.
-  uint64_t lane = ((uint64_t)A[idx + 1] << 32) | A[idx];
-  return (uint32_t)(lane >> rShift);
-}
 
 static inline uint32_t mask_l_word(uint32_t word, int idx) {
   return (idx == L_WORDS - 1) ? (word & L_LAST_WORD_MASK) : word;
 }
 
-void expand_A(uint32_t *A, size_t a_words, const uint8_t keyA[16]) {
+void mpc_hm_expand_matrix(uint32_t *A, size_t a_words, const uint8_t keyA[16]) {
   EVP_CIPHER_CTX *ctx = setupAES(keyA);
 
   uint8_t *bytesA = (uint8_t *)A;
@@ -40,55 +32,10 @@ void expand_A(uint32_t *A, size_t a_words, const uint8_t keyA[16]) {
   EVP_CIPHER_CTX_free(ctx);
 }
 
-void universal_hash_compute_b(uint8_t *b, const uint32_t *A,
-                              const uint32_t *r_words, size_t l_words,
-                              const uint8_t *message, size_t message_bit_len) {
-  size_t message_byte_len = (message_bit_len + 7u) / 8u;
-  memset(b, 0, message_byte_len);
-
-  for (size_t i = 0; i < message_bit_len; i++) {
-    // A[i,j] = d[n - 1 - i + j]: each diagonal is constant.
-    size_t row_start = message_bit_len - 1u - i;
-    size_t rShift = row_start % 32u;
-    size_t base = row_start / 32u;
-    uint32_t acc = 0;
-
-    for (size_t j = 0; j < l_words; j++) {
-      acc ^= load_window32(A, base + j, rShift) & r_words[j];
-    }
-
-    uint8_t bit =
-        (uint8_t)(__builtin_parity(acc) ^ GETBIT(message[i / 8], i % 8));
-    SETBIT(b[i / 8], i % 8, bit);
-  }
-}
-
-int universal_hash_verify_message(const uint8_t *message,
-                                  size_t message_bit_len, const uint8_t *b,
-                                  const uint32_t *A, const uint32_t *r_words,
-                                  size_t l_words) {
-  for (size_t i = 0; i < message_bit_len; i++) {
-    size_t row_start = message_bit_len - 1u - i;
-    size_t rShift = row_start % 32u;
-    size_t base = row_start / 32u;
-    uint32_t acc = 0;
-
-    for (size_t j = 0; j < l_words; j++) {
-      acc ^= load_window32(A, base + j, rShift) & r_words[j];
-    }
-
-    uint8_t rec = (uint8_t)(__builtin_parity(acc) ^ GETBIT(b[i / 8], i % 8));
-    if (rec != GETBIT(message[i / 8], i % 8)) {
-      return -1;
-    }
-  }
-  return 0;
-}
-
-void generate_H(uint32_t A[A_WORDS], uint8_t b[MSG_BYTES],
-                const uint8_t keyH[16], const uint8_t m[MSG_BYTES],
-                const RVec *r) {
-  expand_A(A, A_WORDS, keyH);
+void mpc_hm_hash_init(uint32_t A[A_WORDS], uint8_t b[MSG_BYTES],
+                      const uint8_t keyH[16], const uint8_t m[MSG_BYTES],
+                      const RVec *r) {
+  mpc_hm_expand_matrix(A, A_WORDS, keyH);
   for (int i = 0; i < MSG_BITS; i++) {
     uint32_t rShift = i % 32;
     uint32_t base = i / 32;
@@ -96,7 +43,7 @@ void generate_H(uint32_t A[A_WORDS], uint8_t b[MSG_BYTES],
     // b[i] = A[i..i+L) * r[0..L) - m[i]
     uint32_t acc = 0;
     for (int j = 0; j < L_WORDS; j++) {
-      acc ^= load_window32(A, base + j, rShift) &
+      acc ^= toeplitz_load_window32(A, base + j, rShift) &
              mask_l_word(r->words[j], j);
     }
     uint32_t bi = __builtin_parity(acc);
@@ -106,9 +53,8 @@ void generate_H(uint32_t A[A_WORDS], uint8_t b[MSG_BYTES],
 }
 
 void mpc_universal_hash_prove(const UniversalHash *h,
-                               const uint32_t m[MSG_WORDS][3],
-                               const RVec r[3],
-                               uint32_t y[MSG_WORDS][3]) {
+                              const uint32_t m[MSG_WORDS][3], const RVec r[3],
+                              uint32_t y[MSG_WORDS][3]) {
   memset(y, 0, 3 * MSG_WORDS * sizeof(uint32_t));
   for (int i = 0; i < MSG_BITS; i++) {
     uint32_t yi[3] = {0};
@@ -117,7 +63,7 @@ void mpc_universal_hash_prove(const UniversalHash *h,
     uint32_t bitIdx = i % 32;
 
     for (int j = 0; j < L_WORDS; j++) {
-      uint32_t A_ij = load_window32(h->A, wordIdx + j, bitIdx);
+      uint32_t A_ij = toeplitz_load_window32(h->A, wordIdx + j, bitIdx);
       uint32_t rj[3] = {mask_l_word(r[0].words[j], j),
                         mask_l_word(r[1].words[j], j),
                         mask_l_word(r[2].words[j], j)};
@@ -136,10 +82,9 @@ void mpc_universal_hash_prove(const UniversalHash *h,
 }
 
 int mpc_universal_hash_verify(const UniversalHash *h,
-                                const uint32_t m[MSG_WORDS][2],
-                                const RVec r[2],
-                                const uint32_t y[MSG_WORDS][3],
-                                const uint32_t e) {
+                              const uint32_t m[MSG_WORDS][2], const RVec r[2],
+                              const uint32_t y[MSG_WORDS][3],
+                              const uint32_t e) {
 
   for (int i = 0; i < MSG_BITS; i++) {
     uint32_t y_rec[2] = {0};
@@ -149,7 +94,7 @@ int mpc_universal_hash_verify(const UniversalHash *h,
 
     /* y_rec = A[i] * r */
     for (int j = 0; j < L_WORDS; j++) {
-      uint32_t A_ij = load_window32(h->A, wordIdx + j, bitIdx);
+      uint32_t A_ij = toeplitz_load_window32(h->A, wordIdx + j, bitIdx);
       uint32_t rj[2] = {mask_l_word(r[0].words[j], j),
                         mask_l_word(r[1].words[j], j)};
       mpc_ANDK2(rj, A_ij, t1);
@@ -216,6 +161,5 @@ int mpc_inner_prod_verify(const UniversalHash *h, const uint32_t m[2],
     return -1;
   }
 
-  return (y_rec[0] ^ y_rec[1] ^ y[(e + 2) % 3] ^ (h->b[0] & 1)) == 0 ? 0
-                                                                        : -1;
+  return (y_rec[0] ^ y_rec[1] ^ y[(e + 2) % 3] ^ (h->b[0] & 1)) == 0 ? 0 : -1;
 }

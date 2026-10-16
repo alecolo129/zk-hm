@@ -38,28 +38,28 @@ ctest --test-dir build --output-on-failure
 
 ### Plain HM commitments
 
-The public API is declared in `include/hm.h`.
+The plain API is declared in `include/hm_plain.h`.
 
 The library supports plain HM commitments of bit-string messages. 
-Plain HM commitments can share one Toeplitz matrix across a batch of
-equally-sized messages, reducing the communication overhead.
+Plain HM commitments can share one Toeplitz matrix across a batch of equally-sized messages, reducing the communication overhead.
 
 A typical flow is:
 
 1. call `hm_commit_get_sizes()` to obtain the required sizes for the caller-owned buffers;
 2. allocate buffers for *commitment* and *opening* using the sizes obtained in Setp 1;
-3. call `hm_context_create()` to create sender's context which includes a random Toeplitz. In case of batch commitments, a single context is reused for the entire batch;
-4. call `hm_commit()` with the sender's context to sample a fresh *opening* and generates a *commitment* for the input message.
-5. export the public matrix with `hm_context_export_matrix()` and send it to the receiver. The receiver calls `hm_context_from_matrix()` to create his own context from the public matrix.
-6. call `hm_verify()` with the receiver's context to verify the *commitment* against the input *message* and revealed *opening*.
+3. call `hm_context_create()` to create sender's *context*, which includes a random Toeplitz matrix. In case of batch commitments, a single context is reused for the entire batch;
+4. call `hm_commit()` with the sender's *context* to sample a fresh *opening* and generates a *commitment* for the input message.
+5. export the public matrix with `hm_context_export_matrix()` and (virtually) send it to the receiver. The receiver calls `hm_context_from_matrix()` to create his own *context* from the public matrix.
+6. call `hm_verify()` with the receiver's *context* to verify the *commitment* against the input *message* and revealed *opening*.
 
 
 ### HM (bit-)commitments with Zero-Knowledge verification
 
 For bit-commitments, the library also provides zero-knowledge proofs of pre-image knowledge.
+The ZK API is declared in `include/hm_zk.h`.
 A typical zero-knowledge bit-commitment flow is:
 1. call `hm_bit_commit()` to commit to a *bit*, producing a *commitment*, an *opening*, and a *proof file*;
-2. call `hm_bit_verify()` to verify the *proof file* against the input *bit* and *commitment*;
+2. call `hm_bit_verify()` to verify the *proof file* against the *commitment*, without supplying the bit or opening;
 3. release library-owned buffers with `hm_buffer_free()`.
 
 C and C++ examples are available in `examples/` and are disabled by default:

@@ -15,33 +15,19 @@ int mpc_inner_prod_verify(const UniversalHash *h, const uint32_t m[2],
                           const uint32_t e);
 
 void mpc_universal_hash_prove(const UniversalHash *h,
-                              const uint32_t m[MSG_WORDS][3],
-                              const RVec r[3],
+                              const uint32_t m[MSG_WORDS][3], const RVec r[3],
                               uint32_t y[MSG_WORDS][3]);
 
 int mpc_universal_hash_verify(const UniversalHash *h,
-                              const uint32_t m[MSG_WORDS][2],
-                              const RVec r[2],
-                              const uint32_t y[MSG_WORDS][3],
-                              const uint32_t e);
+                              const uint32_t m[MSG_WORDS][2], const RVec r[2],
+                              const uint32_t y[MSG_WORDS][3], const uint32_t e);
 
-void expand_A(uint32_t *A, size_t a_words, const uint8_t keyA[16]);
 
-void generate_H(uint32_t A[A_WORDS], uint8_t b[MSG_BYTES],
-                const uint8_t keyH[16], const uint8_t m[MSG_BYTES],
-                const RVec *r);
+void mpc_hm_expand_matrix(uint32_t *A, size_t a_words, const uint8_t keyA[16]);
 
-/* Plain HM helpers: A contains padded LSB-first Toeplitz diagonal words;
- * r_words contains exactly L opening bits with zero word padding. */
-void universal_hash_compute_b(uint8_t *b, const uint32_t *A,
-                              const uint32_t *r_words, size_t l_words,
-                              const uint8_t *message,
-                              size_t message_bit_len);
-
-int universal_hash_verify_message(const uint8_t *message,
-                                  size_t message_bit_len, const uint8_t *b,
-                                  const uint32_t *A,
-                                  const uint32_t *r_words, size_t l_words);
+void mpc_hm_hash_init(uint32_t A[A_WORDS], uint8_t b[MSG_BYTES],
+                      const uint8_t keyH[16], const uint8_t m[MSG_BYTES],
+                      const RVec *r);
 
 #ifdef __cplusplus
 }
