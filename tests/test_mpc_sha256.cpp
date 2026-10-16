@@ -78,4 +78,9 @@ TEST(MPCSha256Test, test) {
 
   EXPECT_EQ(memcmp(expected_digest, actual, 32), 0)
       << (int)expected_digest[0] << " - " << (int)actual[0];
+
+  for (int i = 0; i < 3; ++i) {
+    free(views[i]);
+    free(randomness[i]);
+  }
 }

@@ -4,59 +4,81 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <vector>
 
 int main() {
-  constexpr std::size_t commitment_count = 100;
   constexpr std::size_t message_bit_len = 2;
-
-  std::array<uint8_t, commitment_count> messages{};
-  for (std::size_t i = 0; i < messages.size(); ++i) {
+  constexpr std::size_t count = 100;
+  std::array<uint8_t, count> messages{};
+  for (std::size_t i = 0; i < count; ++i) {
     messages[i] = static_cast<uint8_t>(i & 0x03u);
   }
-
   hm_commit_sizes_t sizes{};
+  // compute sizes for caller-owned buffers
   if (hm_commit_get_sizes(message_bit_len, &sizes) != 0) {
-    std::cerr << "hm_commit_get_sizes failed\n";
+    std::cerr << "invalid message length\n";
     return 1;
   }
 
-  std::vector<uint8_t> toeplitz_matrix(sizes.toeplitz_matrix_len);
-  std::vector<uint8_t> commitments(commitment_count * sizes.commitment_len);
-  std::vector<uint8_t> openings(commitment_count * sizes.opening_len);
+  /*
+    Sender
+  */
 
-  if (hm_pick_universal_hash(message_bit_len, toeplitz_matrix.data(),
-                             toeplitz_matrix.size()) != 0) {
-    std::cerr << "hm_pick_universal_hash failed\n";
+  std::vector<uint8_t> matrix(sizes.toeplitz_matrix_len);
+  std::vector<uint8_t> commitments(count * sizes.commitment_len);
+  std::vector<uint8_t> openings(count * sizes.opening_len);
+
+  using Context = std::unique_ptr<hm_context_t, decltype(&hm_context_free)>;
+  hm_context_t *raw = nullptr;
+  // sample one public matrix for the entire batch
+  if (hm_context_create(message_bit_len, &raw) != 0) {
+    std::cerr << "context creation failed\n";
     return 1;
   }
-
-  for (std::size_t i = 0; i < commitment_count; ++i) {
-    uint8_t *commitment = commitments.data() + i * sizes.commitment_len;
-    uint8_t *opening = openings.data() + i * sizes.opening_len;
-
-    if (hm_commit(toeplitz_matrix.data(), toeplitz_matrix.size(), &messages[i],
-                  message_bit_len, commitment, sizes.commitment_len, opening,
+  Context sender(raw, hm_context_free);
+  // compute commitments
+  for (std::size_t i = 0; i < count; ++i) {
+    if (hm_commit(sender.get(), &messages[i],
+                  commitments.data() + i * sizes.commitment_len,
+                  sizes.commitment_len, openings.data() + i * sizes.opening_len,
                   sizes.opening_len) != 0) {
-      std::cerr << "hm_commit failed at index " << i << '\n';
+      std::cerr << "commit failed at index " << i << '\n';
       return 1;
     }
   }
 
-  for (std::size_t i = 0; i < commitment_count; ++i) {
-    const uint8_t *commitment = commitments.data() + i * sizes.commitment_len;
-    const uint8_t *opening = openings.data() + i * sizes.opening_len;
+  // Send the matrix once, with the commitments
+  // Openings are usually sent separately (e.g., selective opening)
+  if (hm_context_export_matrix(sender.get(), matrix.data(), matrix.size()) !=
+      0) {
+    std::cerr << "matrix export failed\n";
+    return 1;
+  }
 
-    if (hm_verify(toeplitz_matrix.data(), toeplitz_matrix.size(), &messages[i],
-                  message_bit_len, commitment, sizes.commitment_len, opening,
+  /*
+    Receiver
+  */
+
+  // init verifier's context from matrix
+  if (hm_context_from_matrix(message_bit_len, matrix.data(), matrix.size(),
+                             &raw) != 0) {
+    std::cerr << "matrix import failed\n";
+    return 1;
+  }
+  Context receiver(raw, hm_context_free);
+  // verify batch with openings
+  for (std::size_t i = 0; i < count; ++i) {
+    if (hm_verify(receiver.get(), &messages[i],
+                  commitments.data() + i * sizes.commitment_len,
+                  sizes.commitment_len, openings.data() + i * sizes.opening_len,
                   sizes.opening_len) != 0) {
-      std::cerr << "hm_verify failed at index " << i << '\n';
+      std::cerr << "verification failed at index " << i << '\n';
       return 1;
     }
   }
-
-  std::cout << "Created and verified " << commitment_count
-            << " 2-bit commitments\n";
+  std::cout << "Created and verified " << count << " two-bit commitments\n";
+  std::cout << "shared matrix: " << matrix.size() << " bytes\n";
   std::cout << "commitments: " << commitments.size() << " bytes\n";
   std::cout << "openings: " << openings.size() << " bytes\n";
   return 0;

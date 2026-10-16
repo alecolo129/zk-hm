@@ -4,70 +4,70 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void print_msg(int msg, size_t msg_len) {
-  printf("Committed to msg ");
-  int i = sizeof(int) * 8;
-  while (sizeof(int) * 8 - i < msg_len) {
-    printf("%d", (msg & 1) ? 1 : 0);
-    msg >>= 1;
-    i--;
-  }
-  printf("\n");
-}
-
 int main(void) {
-  // commit to msg 0b11 (little-endian)
-  const uint8_t msg = 0x03;
   const size_t message_bit_len = 2;
-
+  enum { COUNT = 1 };
+  const uint8_t messages[COUNT] = {0x03}; // Two message bits, LSB-first.
   hm_commit_sizes_t sizes = {0};
-  uint8_t *toeplitz_matrix = NULL;
-  uint8_t *commitment = NULL;
-  uint8_t *opening = NULL;
+  hm_context_t *sender = NULL;
+  hm_context_t *receiver = NULL;
+  uint8_t *matrix = NULL;
+  uint8_t *commitments = NULL;
+  uint8_t *openings = NULL;
   int ret = 1;
 
   if (hm_commit_get_sizes(message_bit_len, &sizes) != 0) {
-    fprintf(stderr, "hm_commit_get_sizes failed\n");
+    fprintf(stderr, "invalid message length\n");
     goto cleanup;
   }
-
-  commitment = malloc(sizes.commitment_len);
-  opening = malloc(sizes.opening_len);
-  toeplitz_matrix = malloc(sizes.toeplitz_matrix_len);
-  if (!commitment || !opening || !toeplitz_matrix) {
+  matrix = malloc(sizes.toeplitz_matrix_len);
+  commitments = malloc(COUNT * sizes.commitment_len);
+  openings = malloc(COUNT * sizes.opening_len);
+  if (!matrix || !commitments || !openings) {
     fprintf(stderr, "allocation failed\n");
     goto cleanup;
   }
-
-  const size_t toeplitz_matrix_len = sizes.toeplitz_matrix_len;
-  if (hm_pick_universal_hash(message_bit_len, toeplitz_matrix, toeplitz_matrix_len) != 0) {
-    printf("hm_pick_universal_hash failed\n");
+  // Sample one public matrix for the entire batch.
+  if (hm_context_create(message_bit_len, &sender) != 0) {
+    fprintf(stderr, "context creation failed\n");
     goto cleanup;
   }
-
-  if (hm_commit(toeplitz_matrix, toeplitz_matrix_len, &msg, message_bit_len,
-                commitment, sizes.commitment_len, opening,
-                sizes.opening_len) != 0) {
-    fprintf(stderr, "hm_commit failed\n");
-    goto cleanup;
+  for (size_t i = 0; i < COUNT; i++) {
+    if (hm_commit(sender, &messages[i], commitments + i * sizes.commitment_len,
+                  sizes.commitment_len, openings + i * sizes.opening_len,
+                  sizes.opening_len) != 0) {
+      fprintf(stderr, "commit failed at index %zu\n", i);
+      goto cleanup;
+    }
   }
 
-  print_msg(msg, message_bit_len);
-  printf("commitment: %zu bytes\n", sizes.commitment_len);
-  printf("opening: %zu bytes\n", sizes.opening_len);
-
-  if (hm_verify(toeplitz_matrix, toeplitz_matrix_len, &msg, message_bit_len,
-                commitment, sizes.commitment_len, opening,
-                sizes.opening_len) != 0) {
-    fprintf(stderr, "hm_verify failed\n");
+  // Send the matrix once, with the commitments. Each opening is sent later.
+  if (hm_context_export_matrix(sender, matrix, sizes.toeplitz_matrix_len) !=
+          0 ||
+      hm_context_from_matrix(message_bit_len, matrix, sizes.toeplitz_matrix_len,
+                             &receiver) != 0) {
+    fprintf(stderr, "matrix transfer failed\n");
     goto cleanup;
   }
-
-  printf("Commitment verified successfully\n");
+  for (size_t i = 0; i < COUNT; i++) {
+    if (hm_verify(receiver, &messages[i],
+                  commitments + i * sizes.commitment_len, sizes.commitment_len,
+                  openings + i * sizes.opening_len, sizes.opening_len) != 0) {
+      fprintf(stderr, "verification failed at index %zu\n", i);
+      goto cleanup;
+    }
+  }
+  printf("Created and verified %d two-bit commitments\n", COUNT);
+  printf("shared matrix: %zu bytes\n", sizes.toeplitz_matrix_len);
+  printf("commitments: %zu bytes\n", COUNT * sizes.commitment_len);
+  printf("openings: %zu bytes\n", COUNT * sizes.opening_len);
   ret = 0;
 
 cleanup:
-  free(commitment);
-  free(opening);
+  hm_context_free(receiver);
+  hm_context_free(sender);
+  free(matrix);
+  free(commitments);
+  free(openings);
   return ret;
 }
