@@ -66,10 +66,7 @@ C and C++ examples are available in `examples/` and are disabled by default:
 
 ```bash
 ./build.sh -e
-# plain HM commitments
-./build/examples/hm_commit_c
-./build/examples/hm_commit_cpp
-# plain HM commitments with batch allocation
+# plain HM commitments 
 ./build/examples/hm_commit_batch_c
 ./build/examples/hm_commit_batch_cpp
 # zk HM bit-commitments
